@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -62,19 +63,37 @@ CREATE INDEX IF NOT EXISTS idx_runs_suite ON runs (suite_id);
 
 
 class MetadataDB:
+    """SQLite access with one connection per thread.
+
+    API endpoints run in a threadpool; sqlite3 connections cannot cross
+    threads, so each thread lazily opens its own connection to the same file.
+    """
+
     def __init__(self, path: Path | str) -> None:
         self.path = str(path)
-        self._conn = sqlite3.connect(self.path)
-        self._conn.row_factory = sqlite3.Row
-        self._conn.executescript(_SCHEMA)
-        self._conn.execute(
+        self._local = threading.local()
+        conn = self._conn
+        conn.executescript(_SCHEMA)
+        conn.execute(
             "INSERT OR IGNORE INTO meta (key, value) VALUES ('schema_version', ?)",
             (str(SCHEMA_VERSION),),
         )
-        self._conn.commit()
+        conn.commit()
+
+    @property
+    def _conn(self) -> sqlite3.Connection:
+        conn = getattr(self._local, "conn", None)
+        if conn is None:
+            conn = sqlite3.connect(self.path, timeout=30)
+            conn.row_factory = sqlite3.Row
+            self._local.conn = conn
+        return conn
 
     def close(self) -> None:
-        self._conn.close()
+        conn = getattr(self._local, "conn", None)
+        if conn is not None:
+            conn.close()
+            self._local.conn = None
 
     # -- agents -----------------------------------------------------------
     def save_agent(self, revision: AgentRevision, created_at: str) -> None:
