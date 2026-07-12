@@ -55,7 +55,18 @@ def create_app(workspace: Workspace) -> FastAPI:
 
     @app.get("/api/v1/scenarios")
     def scenarios(tag: str | None = None, difficulty: str | None = None):
-        return workspace.db().list_scenarios(tag=tag, difficulty=difficulty)
+        return services.enrich_scenario_rows(
+            workspace.db().list_scenarios(tag=tag, difficulty=difficulty)
+        )
+
+    @app.get("/api/v1/scenarios/{scenario_id}")
+    def scenario_detail(scenario_id: str):
+        # Exposes hidden_facts (the planted bug) — operator review surface
+        # only; never point an agent adapter at this API.
+        detail = services.scenario_detail(workspace, scenario_id)
+        if detail is None:
+            raise HTTPException(status_code=404, detail="scenario not found")
+        return detail
 
     @app.get("/api/v1/agents")
     def agents():

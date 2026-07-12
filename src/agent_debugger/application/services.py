@@ -17,6 +17,7 @@ from agent_debugger.renderers.base import ObservationRenderer
 from agent_debugger.renderers.deterministic import DeterministicRenderer
 from agent_debugger.renderers.hybrid import HybridRenderer
 from agent_debugger.renderers.qwen import QwenAgentWorldRenderer
+from agent_debugger.scenario.guide import load_guide
 from agent_debugger.scenario.package import ScenarioPackage, load_package
 
 
@@ -54,6 +55,85 @@ def register_scenario(workspace: Workspace, package: ScenarioPackage) -> None:
         tags=package.manifest.tags,
         registered_at=utc_now(),
     )
+
+
+def scenario_detail(workspace: Workspace, scenario_id: str) -> dict[str, Any] | None:
+    """Full scenario payload for the review dashboard.
+
+    Deliberately exposes hidden_facts (the planted bug) — this is the
+    operator review surface; never point an agent adapter at this API.
+    Loads the package directly rather than via resolve_package so a digest
+    mismatch is reported as data (digest_ok=False), not raised as an error.
+    """
+    row = workspace.db().get_scenario(scenario_id)
+    if row is None:
+        return None
+    payload: dict[str, Any] = {
+        **row,
+        "task": None,
+        "failure_type": None,
+        "language": None,
+        "framework": None,
+        "par_actions": None,
+        "package_available": False,
+        "digest_ok": None,
+        "guide": None,
+    }
+    try:
+        package = load_package(row["root_path"])
+        manifest = package.manifest
+        payload.update(
+            title=manifest.title,
+            task=manifest.task,
+            difficulty=manifest.difficulty,
+            language=manifest.language,
+            framework=manifest.framework,
+            failure_type=manifest.failure_type,
+            tags=manifest.tags,
+            par_actions=manifest.par_actions,
+            scoring_profile=manifest.scoring_profile,
+            allowed_actions=manifest.allowed_actions,
+            success_predicates=manifest.success_predicates,
+            failure_predicates=manifest.failure_predicates,
+            perturbations=[p.model_dump() for p in manifest.perturbations],
+            hidden_facts=manifest.initial_state.hidden_facts,
+            log_channels=sorted(manifest.initial_state.logs),
+            test_suites=sorted(manifest.test_suites),
+            package_available=True,
+            digest_ok=package.digest == row["digest"],
+        )
+    except (ScenarioError, OSError):
+        pass  # degraded payload from the DB row only
+    guide = load_guide(Path(row["root_path"]), scenario_id)
+    if guide is not None:
+        payload["guide"] = guide.model_dump()
+    return payload
+
+
+def enrich_scenario_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Best-effort manifest enrichment for the scenario list (never raises)."""
+    enriched: list[dict[str, Any]] = []
+    for row in rows:
+        extra: dict[str, Any] = {
+            "task": None,
+            "par_actions": None,
+            "failure_type": None,
+            "language": None,
+            "framework": None,
+        }
+        try:
+            manifest = load_package(row["root_path"]).manifest
+            extra.update(
+                task=manifest.task,
+                par_actions=manifest.par_actions,
+                failure_type=manifest.failure_type,
+                language=manifest.language,
+                framework=manifest.framework,
+            )
+        except (ScenarioError, OSError):
+            pass
+        enriched.append({**row, **extra})
+    return enriched
 
 
 # -- agents ----------------------------------------------------------------

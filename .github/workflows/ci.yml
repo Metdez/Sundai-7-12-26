@@ -25,6 +25,8 @@ jobs:
         shell: bash
         run: |
           for s in scenarios/*/; do
+            # skip non-package dirs (e.g. _guides/ holds dashboard docs)
+            [ -f "$s/manifest.yaml" ] || continue
             python -m agent_debugger.cli.main scenario test "$s"
           done
 

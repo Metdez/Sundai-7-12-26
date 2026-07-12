@@ -69,6 +69,23 @@ this file records how the implementation resolved its open edges.
   /api/v1/scoring/rubric` serializes the same module constants
   `score_run()` executes (weights, per-rule deltas, efficiency formula), so
   the UI's explanation of the math cannot drift from the scorer.
+- **Dashboard IA is task-first: Overview / Scenarios / Runs / Rubric.** The
+  default view answers "who's winning" (agent leaderboard + a scenario×agent
+  matrix of latest scores) instead of listing raw runs; the run list moved to
+  `#/runs` as a filterable table (`?scenario=&model=&outcome=` deep links).
+  Leaderboard/matrix aggregation is client-side over the existing runs list;
+  the grouping key is the display label (`name (model)`), NOT the model id —
+  reference agents all share `model_identifier: "none"` and would wrongly
+  merge under model-first grouping.
+- **Scenario guides live in `scenarios/_guides/<scenario_id>.yaml`, outside
+  package roots.** `compute_package_digest` hashes every file under a
+  package root, so docs inside `scenarios/<dir>/` would invalidate
+  registrations and replay. `GET /api/v1/scenarios/{id}` loads the manifest
+  live via `load_package` (never `resolve_package`, which hard-fails on
+  digest mismatch) and reports `digest_ok` as data for a UI warning banner;
+  the guide is merged in best-effort (missing/malformed → `guide: null`,
+  never a 500). The CI scenario-validation loop skips directories without a
+  `manifest.yaml` so `_guides/` doesn't break `scenario test`.
 
 ## Backlog (content and features, not requirements changes)
 

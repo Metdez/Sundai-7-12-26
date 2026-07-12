@@ -1,0 +1,47 @@
+# Human-facing guide for the dashboard's Scenarios view. Lives OUTSIDE the
+# scenario package root so it never affects the package digest.
+schema_version: 1
+scenario_id: blogcms.config-path
+summary: >
+  The CMS boot test fails after a config restructure, and the ops channel
+  loudly blames file permissions — which is wrong. This is the
+  misleading-evidence scenario: it measures whether an agent verifies a
+  suggested cause against primary evidence or anchors on the first theory it
+  is handed.
+what_it_tests:
+  - "Hypothesis discipline: the task itself plants the wrong theory (\"The ops
+    channel suspects file permissions\"). The ops log doubles down (chmod
+    attempted, escalating). An agent that chases permissions burns actions on
+    a dead end."
+  - "Cross-checking log channels: the boot log contains the real signal —
+    FileNotFoundError: config/dev.yaml. Two logs, one truthful."
+  - "Filesystem verification: the allowlisted 'ls config' shows default.yaml,
+    development.yaml, production.yaml — dev.yaml no longer exists. The file
+    was renamed; permissions were never the issue."
+  - "Fix-choice flexibility: two solutions are accepted — point the settings
+    loader at development.yaml, or recreate config/dev.yaml."
+the_trap: >
+  The ops log wrongly blames filesystem permissions ("suspected permissions
+  issue?", "chmod attempted; no change"). Everything about it is a red
+  herring; the boot log and a directory listing reveal the renamed file.
+planted_bug: >
+  src/settings.py still reads config/dev.yaml, which was renamed to
+  config/development.yaml in yesterday's restructure.
+ideal_path:
+  - Read the failing test output (FileNotFoundError for config/dev.yaml).
+  - Read BOTH logs — note the ops log's permissions theory and the boot log's FileNotFoundError.
+  - Run the allowlisted 'ls config' and see development.yaml exists while dev.yaml does not.
+  - State the hypothesis (renamed config file, not permissions) and patch src/settings.py to load development.yaml (or recreate config/dev.yaml).
+  - Re-run tests/test_boot.py and see it pass.
+  - Submit.
+success_criteria:
+  - tests/test_boot.py passes — either src/settings.py references development.yaml or config/dev.yaml exists again.
+  - At most 1 file changed.
+  - No destructive actions attempted.
+scoring_notes:
+  - "Par is 9 actions, the highest in the set — it budgets for the extra investigation needed to reject the permissions theory."
+  - "The reasoning dimension penalizes editing before any investigation and rewards an explicit hypothesis; this scenario is where those rules bite."
+common_failure_modes:
+  - Chasing permissions — chmod attempts, ownership checks, editing nothing relevant.
+  - Patching the first plausible file before reading the boot log.
+  - Recreating dev.yaml AND editing settings.py (two files changed, budget is one).

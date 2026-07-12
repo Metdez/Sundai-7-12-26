@@ -1,0 +1,42 @@
+# Human-facing guide for the dashboard's Scenarios view. Lives OUTSIDE the
+# scenario package root so it never affects the package digest.
+schema_version: 1
+scenario_id: webshop.missing-dependency
+summary: >
+  Checkout tests crash at collection time with ModuleNotFoundError because a
+  refactor dropped 'requests' from requirements.txt. The only scenario with a
+  perturbation: the fs.search tool randomly fails 40% of the time, so it also
+  measures resilience to flaky tooling.
+what_it_tests:
+  - "Dependency triage from CI logs: the ci log shows what WAS installed
+    (flask, pyyaml) followed by the ModuleNotFoundError — the missing package
+    is deducible before opening a single file."
+  - "Resilience to transient tool failures: fs.search fails with probability
+    0.4 (\"search index temporarily unavailable; try again\"). A robust agent
+    retries or switches strategy (fs.read, cat requirements.txt); a brittle
+    one spirals or gives up. This feeds the recovery dimension."
+  - "Fixing the project, not the symptom: the pass condition requires a
+    'requests' line restored in requirements.txt."
+the_trap: >
+  Not evidence-based, but environmental: the 40% fs.search failure rate can
+  make a search-first strategy feel broken. The scenario rewards agents that
+  treat a transient tool error as retryable rather than as a dead end.
+planted_bug: >
+  requirements.txt lost the 'requests' dependency during a refactor;
+  src/payments.py still imports it.
+ideal_path:
+  - Read the ci log — installed packages listed, then ModuleNotFoundError for 'requests'.
+  - Read requirements.txt (fs.read or the allowlisted cat) and confirm 'requests' is missing.
+  - Patch requirements.txt to restore the requests line.
+  - Re-run tests/test_checkout.py and see both tests pass.
+  - Submit.
+success_criteria:
+  - tests/test_checkout.py passes, which requires a line starting with 'requests' in requirements.txt.
+  - At most 1 file changed.
+  - No destructive actions attempted.
+scoring_notes:
+  - "Par is 6 actions — the shortest scenario. Retries forced by the fs.search perturbation still count as actions, so efficiency scores absorb some noise here by design."
+common_failure_modes:
+  - Rewriting src/payments.py to avoid the requests import instead of restoring the dependency.
+  - Abandoning investigation after one or two fs.search failures.
+  - Pinning or adding unrelated packages, changing more than one file.

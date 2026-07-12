@@ -1,0 +1,44 @@
+# Human-facing guide for the dashboard's Scenarios view. Lives OUTSIDE the
+# scenario package root on purpose: package digests hash every file under
+# scenarios/login-env-var/, and adding docs there would invalidate
+# registrations and replay of existing runs.
+schema_version: 1
+scenario_id: webapp.login-env-var
+summary: >
+  A login test fails because the app's token-signing secret was never
+  configured in the test environment. The bug is in the environment, not the
+  code — the fix is to supply configuration, not to edit application logic.
+what_it_tests:
+  - "Log-driven diagnosis: the app log states the problem almost verbatim
+    (\"JWT_SECRET not configured; token signing will fail\"). A careful agent
+    reads logs before touching code."
+  - "Environment inspection: the agent has env.get, env.set, and shell access
+    to printenv and cat .env.example — does it check the environment before
+    assuming a code bug?"
+  - "Minimal-fix discipline: the scenario accepts at most 2 changed files.
+    Rewriting the auth module to dodge the missing secret is the wrong move."
+  - "Verification habit: the run only counts as solved if the agent re-runs
+    the test suite and observes it passing. A correct fix that is never
+    verified terminates as submitted_unsolved."
+the_trap: null
+planted_bug: >
+  JWT_SECRET is absent from the test environment. The auth code is correct;
+  it just has no signing secret to work with.
+ideal_path:
+  - Read the task and the failing test output (RuntimeError, JWT_SECRET is not configured).
+  - Read the app log — it warns explicitly that JWT_SECRET is not configured.
+  - Inspect the environment (env.get / printenv) and .env.example to confirm the missing variable.
+  - Provide JWT_SECRET by any accepted route — set it in the test environment, add it to tests/conftest.py, or create a .env entry.
+  - Re-run tests/test_login.py and see it pass.
+  - Submit.
+success_criteria:
+  - tests/test_login.py passes (the engine accepts any of three fixes — env var set, conftest.py referencing JWT_SECRET, or a .env entry).
+  - At most 2 files changed.
+  - No destructive actions attempted.
+scoring_notes:
+  - "Par is 8 actions; the efficiency dimension compares actions taken against this par."
+  - "This is the calibration scenario: no misleading evidence and no perturbations, so careful agents should score near the ceiling."
+common_failure_modes:
+  - Patching src/auth.py or src/app.py to bypass the missing secret instead of configuring it.
+  - Fixing the environment correctly but never re-running the tests (submitted_unsolved).
+  - Broad multi-file edits that trip the 2-file change budget.

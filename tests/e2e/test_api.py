@@ -82,6 +82,55 @@ class TestApi:
         response = await client.get("/api/v1/compare?baseline=a&candidate=b")
         assert response.status_code == 400
 
+    async def test_scenario_list_enriched(self, api):
+        client, *_ = api
+        rows = (await client.get("/api/v1/scenarios")).json()
+        row = rows[0]
+        assert row["scenario_id"] == "webapp.login-env-var"
+        assert row["par_actions"] == 8
+        assert row["failure_type"] == "environment"
+        assert row["task"]
+
+    async def test_scenario_detail(self, api):
+        client, workspace, package, revision = api
+        response = await client.get("/api/v1/scenarios/webapp.login-env-var")
+        assert response.status_code == 200
+        detail = response.json()
+        assert detail["task"] == package.manifest.task
+        assert detail["par_actions"] == 8
+        assert detail["package_available"] is True
+        assert detail["digest_ok"] is True
+        assert "root_cause" in detail["hidden_facts"]
+        assert detail["perturbations"] == []
+        assert detail["guide"] is not None
+        assert detail["guide"]["what_it_tests"]
+
+    async def test_scenario_detail_404(self, api):
+        client, *_ = api
+        assert (await client.get("/api/v1/scenarios/no.such")).status_code == 404
+
+    async def test_scenario_detail_digest_mismatch(self, tmp_path, repo_root):
+        import shutil
+
+        from agent_debugger.persistence.workspace import Workspace
+
+        copy_root = tmp_path / "login-env-var"
+        shutil.copytree(repo_root / "scenarios" / "login-env-var", copy_root)
+        ws = Workspace.init(tmp_path / "ws2")
+        try:
+            services.register_scenario(ws, load_package(copy_root))
+            readme = copy_root / "fixtures" / "repository" / "README.md"
+            readme.write_text("changed after registration\n", encoding="utf-8")
+            transport = httpx.ASGITransport(app=create_app(ws))
+            async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+                response = await client.get("/api/v1/scenarios/webapp.login-env-var")
+            assert response.status_code == 200
+            detail = response.json()
+            assert detail["package_available"] is True
+            assert detail["digest_ok"] is False
+        finally:
+            ws.close()
+
     async def test_scoring_rubric_matches_engine_constants(self, api):
         from agent_debugger.scoring.engine import DIMENSION_WEIGHTS, SCORER_VERSION
 
