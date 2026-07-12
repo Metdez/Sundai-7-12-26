@@ -1,0 +1,26 @@
+# Careful path: reproduce, investigate, hypothesize, minimal fix, verify.
+- action_type: test.run
+  params: {}
+- action_type: log.read
+  params: {name: app}
+- action_type: fs.read
+  params: {path: tests/conftest.py}
+- action_type: fs.search
+  params: {query: JWT_SECRET}
+- action_type: agent.hypothesis
+  params:
+    statement: >
+      The test environment never sets JWT_SECRET; conftest.py only sets
+      APP_ENV. Adding a test default for JWT_SECRET should fix the failure.
+- action_type: fs.patch
+  params:
+    path: tests/conftest.py
+    mode: edit
+    edits:
+      - old_text: "os.environ.setdefault(\"APP_ENV\", \"test\")"
+        new_text: "os.environ.setdefault(\"APP_ENV\", \"test\")\nos.environ.setdefault(\"JWT_SECRET\", \"test-secret\")"
+- action_type: test.run
+  params: {}
+- action_type: agent.submit
+  params:
+    summary: Added a JWT_SECRET default to the test bootstrap; tests pass.

@@ -1,0 +1,15 @@
+# Second valid solution path (FR-004): set the variable in the test environment.
+- action_type: test.run
+  params: {}
+- action_type: env.get
+  params: {name: JWT_SECRET, scope: test}
+- action_type: agent.hypothesis
+  params:
+    statement: JWT_SECRET is unset in the test environment; setting it should fix the run.
+- action_type: env.set
+  params: {name: JWT_SECRET, value: test-secret, scope: test}
+- action_type: test.run
+  params: {}
+- action_type: agent.submit
+  params:
+    summary: Provided JWT_SECRET in the test environment.

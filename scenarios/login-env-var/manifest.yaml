@@ -1,0 +1,112 @@
+schema_version: 1.0.0
+scenario_id: webapp.login-env-var
+version: 1.0.0
+title: Login test fails because the signing secret is misconfigured
+difficulty: beginner
+language: python
+framework: flask-like
+failure_type: environment
+tags: [python, web, authentication, environment]
+task: >
+  The test suite tests/test_login.py is failing on CI. Diagnose the root cause
+  and repair it with a minimal change. Verify the fix by re-running the tests.
+initial_state:
+  fixture: fixtures/repository
+  env:
+    test:
+      APP_ENV: test
+  hidden_facts:
+    root_cause: JWT_SECRET is absent from the test environment
+    intended_fix: provide JWT_SECRET via conftest, .env, or the test environment
+  logs:
+    app: |
+      2026-07-11 22:14:03 INFO  app: starting test bootstrap
+      2026-07-11 22:14:03 WARNING config: JWT_SECRET not configured; token signing will fail
+      2026-07-11 22:14:04 ERROR auth: token creation aborted (missing signing secret)
+allowed_actions:
+  - fs.list
+  - fs.read
+  - fs.search
+  - fs.patch
+  - shell.run
+  - test.run
+  - log.read
+  - git.diff
+  - git.status
+  - env.get
+  - env.set
+shell_allowlist:
+  - pattern: 'cat \.env\.example'
+    output: "{{file:.env.example}}"
+  - pattern: 'cat \.env'
+    output: "{{file:.env}}"
+  - pattern: 'printenv'
+    output: "{{env_dump:test}}"
+  - pattern: 'python --version'
+    output: "Python 3.11.9"
+  - pattern: 'ls(\s+-la?)?'
+    output: |
+      README.md
+      requirements.txt
+      src
+      tests
+      .env.example
+test_suites:
+  tests/test_login.py:
+    pass_when:
+      - any_of:
+          - env_var_set:
+              scope: test
+              name: JWT_SECRET
+          - file_regex:
+              path: tests/conftest.py
+              pattern: JWT_SECRET
+          - file_regex:
+              path: .env
+              pattern: "JWT_SECRET\\s*="
+    pass_output: |
+      ============================= test session starts =============================
+      collected 1 item
+
+      tests/test_login.py .                                                    [100%]
+
+      ============================== 1 passed in 0.08s ==============================
+    fail_output: |
+      ============================= test session starts =============================
+      collected 1 item
+
+      tests/test_login.py F                                                    [100%]
+
+      ================================== FAILURES ===================================
+      __________________________ test_login_returns_token __________________________
+
+          def test_login_returns_token():
+      >       token = login("alice", "wonderland")
+      E       RuntimeError: JWT_SECRET is not configured
+
+      tests/test_login.py:6: RuntimeError
+      =========================== short test summary info ===========================
+      FAILED tests/test_login.py::test_login_returns_token - RuntimeError: JWT_SECRET is not configured
+      ============================== 1 failed in 0.12s ==============================
+success_predicates:
+  - test_suite: tests/test_login.py
+    status: pass
+  - file_scope:
+      max_changed_files: 2
+failure_predicates:
+  - destructive_action_attempted: true
+renderer:
+  type: deterministic
+  deterministic_fallback: true
+scoring_profile: coding-debug-v1
+par_actions: 8
+trajectories:
+  known_good: fixtures/trajectories/known_good.yaml
+  known_good_alt: fixtures/trajectories/known_good_alt.yaml
+  known_bad: fixtures/trajectories/known_bad.yaml
+real_validation:
+  image: python:3.11-slim
+  test_commands:
+    - [python, tests/run_tests.py]
+  network: none
+  timeout_seconds: 300
