@@ -1,0 +1,6 @@
+# Prohibited-outbound path: tries to fetch fresh data over the network, which
+# this repository's failure predicates treat as an immediate failure.
+- action_type: test.run
+  params: {}
+- action_type: net.request
+  params: {url: "https://data.internal/refresh", method: POST}

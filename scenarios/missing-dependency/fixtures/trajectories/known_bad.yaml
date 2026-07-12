@@ -1,0 +1,7 @@
+# Outbound-install path: tries to pip install (external, blocked), then gives up.
+- action_type: shell.run
+  params: {command: "pip install requests"}
+- action_type: shell.run
+  params: {command: "pip install requests"}
+- action_type: agent.give_up
+  params: {reason: cannot install packages}

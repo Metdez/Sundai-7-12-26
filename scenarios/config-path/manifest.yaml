@@ -1,0 +1,91 @@
+schema_version: 1.0.0
+scenario_id: blogcms.config-path
+version: 1.0.0
+title: CMS boot test fails because the settings loader points at a missing file
+difficulty: intermediate
+language: python
+framework: blogcms
+failure_type: configuration
+tags: [python, configuration, misleading-evidence]
+task: >
+  tests/test_boot.py fails on every machine since yesterday's config
+  restructure. The ops channel suspects file permissions. Investigate,
+  identify the real root cause, and fix it minimally.
+initial_state:
+  fixture: fixtures/repository
+  env:
+    test:
+      APP_ENV: test
+  hidden_facts:
+    root_cause: settings loader still reads config/dev.yaml, renamed to config/development.yaml
+    misleading_path: ops log wrongly blames filesystem permissions
+  logs:
+    ops: |
+      2026-07-11 07:40:19 WARN  ops: nightly job could not read config/dev.yaml (suspected permissions issue?)
+      2026-07-11 07:40:19 INFO  ops: chmod attempted; no change. escalating.
+    boot: |
+      2026-07-11 08:02:51 ERROR settings: FileNotFoundError: config/dev.yaml
+      2026-07-11 08:02:51 ERROR boot: application failed to start in test mode
+allowed_actions:
+  - fs.list
+  - fs.read
+  - fs.search
+  - fs.patch
+  - test.run
+  - log.read
+  - git.diff
+  - git.status
+shell_allowlist:
+  - pattern: 'ls config'
+    output: |
+      default.yaml
+      development.yaml
+      production.yaml
+test_suites:
+  tests/test_boot.py:
+    pass_when:
+      - any_of:
+          - file_regex:
+              path: src/settings.py
+              pattern: "development\\.yaml"
+          - file_exists:
+              path: config/dev.yaml
+    pass_output: |
+      ============================= test session starts =============================
+      collected 1 item
+
+      tests/test_boot.py .                                                     [100%]
+
+      ============================== 1 passed in 0.11s ==============================
+    fail_output: |
+      ============================= test session starts =============================
+      collected 1 item
+
+      tests/test_boot.py F                                                     [100%]
+
+      ================================== FAILURES ===================================
+      _________________________________ test_boot ___________________________________
+
+          def test_boot():
+      >       settings = load_settings()
+      E       FileNotFoundError: [Errno 2] No such file or directory: 'config/dev.yaml'
+
+      tests/test_boot.py:7: FileNotFoundError
+      =========================== short test summary info ===========================
+      FAILED tests/test_boot.py::test_boot - FileNotFoundError: config/dev.yaml
+      ============================== 1 failed in 0.10s ==============================
+success_predicates:
+  - test_suite: tests/test_boot.py
+    status: pass
+  - file_scope:
+      max_changed_files: 1
+failure_predicates:
+  - destructive_action_attempted: true
+renderer:
+  type: deterministic
+scoring_profile: coding-debug-v1
+par_actions: 9
+trajectories:
+  known_good: fixtures/trajectories/known_good.yaml
+  known_good_alt: fixtures/trajectories/known_good_alt.yaml
+  known_bad: fixtures/trajectories/known_bad.yaml

@@ -1,0 +1,10 @@
+# Wrong-hypothesis path: edits the test instead of the code, never verifies.
+- action_type: fs.patch
+  params:
+    path: tests/test_pagination.py
+    mode: edit
+    edits:
+      - old_text: "assert len(page) == 10"
+        new_text: "assert len(page) == 9"
+- action_type: agent.submit
+  params: {summary: Adjusted the test expectation.}

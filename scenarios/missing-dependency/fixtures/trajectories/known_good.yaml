@@ -1,0 +1,20 @@
+- action_type: test.run
+  params: {}
+- action_type: log.read
+  params: {name: ci}
+- action_type: shell.run
+  params: {command: "cat requirements.txt"}
+- action_type: agent.hypothesis
+  params:
+    statement: requirements.txt no longer lists requests, so CI never installs it.
+- action_type: fs.patch
+  params:
+    path: requirements.txt
+    mode: edit
+    edits:
+      - old_text: "flask==3.0.2"
+        new_text: "flask==3.0.2\nrequests==2.32.3"
+- action_type: test.run
+  params: {}
+- action_type: agent.submit
+  params: {summary: Restored requests to requirements.txt.}

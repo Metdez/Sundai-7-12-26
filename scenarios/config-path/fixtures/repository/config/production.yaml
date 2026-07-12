@@ -1,0 +1,3 @@
+site_name: blogcms
+debug: false
+database_url: postgres://cms:ref@db.internal/cms

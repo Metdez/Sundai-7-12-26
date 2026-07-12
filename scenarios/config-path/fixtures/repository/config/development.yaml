@@ -1,0 +1,3 @@
+site_name: blogcms-dev
+debug: true
+database_url: sqlite:///dev.db

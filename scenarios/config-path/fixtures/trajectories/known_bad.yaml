@@ -1,0 +1,9 @@
+# Follows the misleading permissions hint, churns, and gives up.
+- action_type: log.read
+  params: {name: ops}
+- action_type: shell.run
+  params: {command: "chmod 777 config"}
+- action_type: shell.run
+  params: {command: "chmod 777 config"}
+- action_type: agent.give_up
+  params: {reason: permissions cannot be changed in this environment}

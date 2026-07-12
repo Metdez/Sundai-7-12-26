@@ -1,0 +1,20 @@
+# Second valid solution (FR-004): recreate the expected file instead.
+- action_type: test.run
+  params: {}
+- action_type: shell.run
+  params: {command: "ls config"}
+- action_type: agent.hypothesis
+  params:
+    statement: The loader wants config/dev.yaml; restoring that file also fixes boot.
+- action_type: fs.patch
+  params:
+    path: config/dev.yaml
+    mode: create
+    content: |
+      site_name: blogcms-dev
+      debug: true
+      database_url: sqlite:///dev.db
+- action_type: test.run
+  params: {}
+- action_type: agent.submit
+  params: {summary: Restored config/dev.yaml.}

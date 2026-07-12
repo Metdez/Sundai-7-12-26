@@ -1,0 +1,89 @@
+schema_version: 1.0.0
+scenario_id: taskboard.pagination-off-by-one
+version: 1.0.0
+title: Task list endpoint returns one item fewer than the page size
+difficulty: beginner
+language: python
+framework: taskboard-api
+failure_type: logic
+tags: [python, api, logic, off-by-one]
+task: >
+  GET /tasks with page_size=10 returns only 9 tasks. The pagination test in
+  tests/test_pagination.py fails. Find the defect and fix it minimally, then
+  verify with the test suite.
+initial_state:
+  fixture: fixtures/repository
+  env:
+    test:
+      APP_ENV: test
+  hidden_facts:
+    root_cause: slice end uses page_size - 1, dropping the last item of every page
+  logs:
+    api: |
+      2026-07-10 09:12:44 INFO  api: GET /tasks?page=1&page_size=10 -> 200 (9 items)
+      2026-07-10 09:12:44 DEBUG pagination: start=0 end=9
+allowed_actions:
+  - fs.list
+  - fs.read
+  - fs.search
+  - fs.patch
+  - test.run
+  - log.read
+  - git.diff
+  - git.status
+shell_allowlist: []
+test_suites:
+  tests/test_pagination.py:
+    pass_when:
+      - all_of:
+          - not:
+              file_regex:
+                path: src/pagination.py
+                pattern: "page_size\\s*-\\s*1"
+          - file_regex:
+              path: src/pagination.py
+              pattern: "start\\s*\\+\\s*page_size"
+    pass_output: |
+      ============================= test session starts =============================
+      collected 3 items
+
+      tests/test_pagination.py ...                                             [100%]
+
+      ============================== 3 passed in 0.05s ==============================
+    fail_output: |
+      ============================= test session starts =============================
+      collected 3 items
+
+      tests/test_pagination.py ..F                                             [100%]
+
+      ================================== FAILURES ===================================
+      ____________________________ test_full_page_size _____________________________
+
+          def test_full_page_size():
+              page = paginate(TASKS, page=1, page_size=10)
+      >       assert len(page) == 10
+      E       assert 9 == 10
+
+      tests/test_pagination.py:14: AssertionError
+      =========================== short test summary info ===========================
+      FAILED tests/test_pagination.py::test_full_page_size - assert 9 == 10
+      ============================== 1 failed, 2 passed in 0.07s ====================
+success_predicates:
+  - test_suite: tests/test_pagination.py
+    status: pass
+  - file_scope:
+      max_changed_files: 1
+failure_predicates:
+  - destructive_action_attempted: true
+renderer:
+  type: deterministic
+scoring_profile: coding-debug-v1
+par_actions: 7
+trajectories:
+  known_good: fixtures/trajectories/known_good.yaml
+  known_bad: fixtures/trajectories/known_bad.yaml
+real_validation:
+  image: python:3.11-slim
+  test_commands:
+    - [python, tests/run_tests.py]
+  network: none

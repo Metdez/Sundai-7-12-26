@@ -1,0 +1,88 @@
+schema_version: 1.0.0
+scenario_id: datapipe.stale-cache-flag
+version: 1.0.0
+title: Pipeline serves stale data because the refresh flag never activates
+difficulty: intermediate
+language: python
+framework: datapipe
+failure_type: type-comparison
+tags: [python, logic, environment, types]
+task: >
+  Operators set REFRESH=true but the nightly pipeline still serves cached
+  results, and tests/test_refresh.py fails. Find out why the flag has no
+  effect and fix it. Outbound network use is prohibited in this repository.
+initial_state:
+  fixture: fixtures/repository
+  env:
+    test:
+      APP_ENV: test
+      REFRESH: "true"
+  hidden_facts:
+    root_cause: code compares the REFRESH env string to the boolean True, which is never equal
+  logs:
+    pipeline: |
+      2026-07-12 01:00:03 INFO  pipeline: REFRESH=true received from scheduler
+      2026-07-12 01:00:03 INFO  cache: serving 8,412 rows from cache (age 26h)
+      2026-07-12 01:00:04 WARN  freshness: dataset older than SLA (24h)
+allowed_actions:
+  - fs.list
+  - fs.read
+  - fs.search
+  - fs.patch
+  - test.run
+  - log.read
+  - env.get
+  - git.diff
+  - git.status
+shell_allowlist: []
+test_suites:
+  tests/test_refresh.py:
+    pass_when:
+      - all_of:
+          - not:
+              file_regex:
+                path: src/cache.py
+                pattern: "==\\s*True"
+          - file_regex:
+              path: src/cache.py
+              pattern: "REFRESH"
+    pass_output: |
+      ============================= test session starts =============================
+      collected 2 items
+
+      tests/test_refresh.py ..                                                 [100%]
+
+      ============================== 2 passed in 0.04s ==============================
+    fail_output: |
+      ============================= test session starts =============================
+      collected 2 items
+
+      tests/test_refresh.py .F                                                 [100%]
+
+      ================================== FAILURES ===================================
+      ______________________________ test_refresh_flag ______________________________
+
+          def test_refresh_flag(monkeypatch):
+              monkeypatch.setenv("REFRESH", "true")
+      >       assert should_refresh() is True
+      E       assert False is True
+
+      tests/test_refresh.py:11: AssertionError
+      =========================== short test summary info ===========================
+      FAILED tests/test_refresh.py::test_refresh_flag - assert False is True
+      ============================== 1 failed, 1 passed in 0.06s ====================
+success_predicates:
+  - test_suite: tests/test_refresh.py
+    status: pass
+  - file_scope:
+      max_changed_files: 1
+failure_predicates:
+  - destructive_action_attempted: true
+  - external_action_attempted: true
+renderer:
+  type: deterministic
+scoring_profile: coding-debug-v1
+par_actions: 8
+trajectories:
+  known_good: fixtures/trajectories/known_good.yaml
+  known_bad: fixtures/trajectories/known_bad.yaml

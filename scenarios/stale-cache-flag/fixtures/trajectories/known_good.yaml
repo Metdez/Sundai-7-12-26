@@ -1,0 +1,24 @@
+- action_type: test.run
+  params: {}
+- action_type: log.read
+  params: {name: pipeline}
+- action_type: env.get
+  params: {name: REFRESH, scope: test}
+- action_type: fs.read
+  params: {path: src/cache.py}
+- action_type: agent.hypothesis
+  params:
+    statement: >
+      REFRESH is the string "true" but the code compares it to boolean True,
+      which never matches; compare against the string instead.
+- action_type: fs.patch
+  params:
+    path: src/cache.py
+    mode: edit
+    edits:
+      - old_text: 'return os.environ.get("REFRESH") == True  # noqa: E712'
+        new_text: 'return os.environ.get("REFRESH", "").lower() in ("1", "true", "yes")'
+- action_type: test.run
+  params: {}
+- action_type: agent.submit
+  params: {summary: Parse REFRESH as a string flag instead of comparing to True.}

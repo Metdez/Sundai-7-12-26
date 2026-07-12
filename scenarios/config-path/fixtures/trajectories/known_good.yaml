@@ -1,0 +1,27 @@
+# Correct path: sees through the misleading permissions hint.
+- action_type: test.run
+  params: {}
+- action_type: log.read
+  params: {name: ops}
+- action_type: log.read
+  params: {name: boot}
+- action_type: shell.run
+  params: {command: "ls config"}
+- action_type: fs.read
+  params: {path: src/settings.py}
+- action_type: agent.hypothesis
+  params:
+    statement: >
+      Not permissions: config/dev.yaml no longer exists after the rename to
+      development.yaml, but settings.py still builds the old path.
+- action_type: fs.patch
+  params:
+    path: src/settings.py
+    mode: edit
+    edits:
+      - old_text: 'path = f"{CONFIG_ROOT}/dev.yaml" if env in ("dev", "test") else f"{CONFIG_ROOT}/production.yaml"'
+        new_text: 'path = f"{CONFIG_ROOT}/development.yaml" if env in ("dev", "test") else f"{CONFIG_ROOT}/production.yaml"'
+- action_type: test.run
+  params: {}
+- action_type: agent.submit
+  params: {summary: Updated loader to the renamed development.yaml config.}
