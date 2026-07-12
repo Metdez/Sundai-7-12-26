@@ -12,3 +12,4 @@ credentials.json
 token.json
 .env
 .playwright-mcp/
+/demo-workspace/
