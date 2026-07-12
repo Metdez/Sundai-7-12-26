@@ -10,23 +10,12 @@
 <header>
   <h1>Agent Debugger</h1>
   <p class="tagline">Deterministic truth · probabilistic presentation</p>
-</header>
-<main>
-  <nav aria-label="Runs">
-    <h2>Runs</h2>
-    <ul id="run-list" class="run-list"><li class="empty">Loading…</li></ul>
+  <nav class="tabs" aria-label="Main">
+    <a class="nav-tab" data-view="home" href="#/">Runs</a>
+    <a class="nav-tab" data-view="rubric" href="#/rubric">Scoring Rubric</a>
   </nav>
-  <section aria-label="Run detail">
-    <div id="detail-header"><p class="empty">Select a run to review its trajectory.</p></div>
-    <h3>Scorecard</h3>
-    <div id="scorecard"><p class="empty">—</p></div>
-    <h3>Changed files</h3>
-    <div id="patch"><p class="empty">—</p></div>
-    <h3>Timeline</h3>
-    <fieldset id="filters" class="filters" aria-label="Event type filters"></fieldset>
-    <div id="timeline"><p class="empty">—</p></div>
-  </section>
-</main>
+</header>
+<main id="view"><p class="empty">Loading…</p></main>
 <script type="module" src="/assets/app.js"></script>
 </body>
 </html>

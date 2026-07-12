@@ -24,6 +24,7 @@ from agent_debugger.persistence.workspace import Workspace
 from agent_debugger.reports.compare import compare_run_sets, evaluate_regression
 from agent_debugger.reports.exporters import run_report_html, run_report_markdown
 from agent_debugger.reports.run_report import build_run_report
+from agent_debugger.scoring.engine import scoring_rubric
 
 WEB_DIST = Path(__file__).resolve().parents[3] / "web" / "dist"
 
@@ -59,6 +60,10 @@ def create_app(workspace: Workspace) -> FastAPI:
     @app.get("/api/v1/agents")
     def agents():
         return workspace.db().list_agents()
+
+    @app.get("/api/v1/scoring/rubric")
+    def scoring_rubric_endpoint():
+        return scoring_rubric()
 
     # -- runs ----------------------------------------------------------------
     @app.get("/api/v1/runs")

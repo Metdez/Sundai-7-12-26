@@ -6,7 +6,6 @@ import pytest
 
 from agent_debugger.api.app import create_app
 from agent_debugger.application import services
-from agent_debugger.domain.model import RunLimits
 from agent_debugger.scenario.package import load_package
 
 
@@ -82,3 +81,18 @@ class TestApi:
         client, *_ = api
         response = await client.get("/api/v1/compare?baseline=a&candidate=b")
         assert response.status_code == 400
+
+    async def test_scoring_rubric_matches_engine_constants(self, api):
+        from agent_debugger.scoring.engine import DIMENSION_WEIGHTS, SCORER_VERSION
+
+        client, *_ = api
+        response = await client.get("/api/v1/scoring/rubric")
+        assert response.status_code == 200
+        rubric = response.json()
+        assert rubric["scorer_version"] == SCORER_VERSION
+        assert rubric["weights"] == DIMENSION_WEIGHTS
+        assert abs(sum(rubric["weights"].values()) - 1.0) < 1e-9
+        names = [d["name"] for d in rubric["dimensions"]]
+        assert names == list(DIMENSION_WEIGHTS)
+        efficiency = next(d for d in rubric["dimensions"] if d["name"] == "efficiency")
+        assert "formula" in efficiency and "8.33" in efficiency["example"]["computation"]

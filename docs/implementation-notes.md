@@ -59,6 +59,17 @@ this file records how the implementation resolved its open edges.
   0..499, so a perturbation draw never depends on how many rules matched
   earlier turns (replay-stable).
 
+- **Dashboard is hash-routed with pages, not a single view.** `#/` (run
+  grid with new-tab links + pick-2-to-compare), `#/run/<id>`, `#/compare/<a>/<b>`,
+  `#/rubric`. Hash routing keeps `web/dist` fully static-servable with zero
+  server-side route additions. Views re-check the hash after their fetches
+  resolve so a stale in-flight render (e.g. the 5s home poll) can never paint
+  over the current route.
+- **The scoring rubric page is generated, not written.** `GET
+  /api/v1/scoring/rubric` serializes the same module constants
+  `score_run()` executes (weights, per-rule deltas, efficiency formula), so
+  the UI's explanation of the math cannot drift from the scorer.
+
 ## Backlog (content and features, not requirements changes)
 
 - 5 more scenario tasks to reach the Phase 2 target of ten (current: five
