@@ -1,0 +1,74 @@
+# Machine-readable requirement traceability matrix (PRD §23).
+# CI flags Must requirements without test references after their phase.
+# status: implemented | partial | deferred
+version: 1
+requirements:
+  FR-001: {title: Versioned scenario packages, priority: must, phase: 1, status: implemented,
+    modules: [scenario/package.py], tests: [tests/contract/test_manifest_and_reports.py::TestManifestSchema::test_digest_changes_when_package_changes]}
+  FR-002: {title: Scenario schema validation, priority: must, phase: 1, status: implemented,
+    modules: [scenario/package.py], tests: [tests/contract/test_manifest_and_reports.py::TestManifestSchema, tests/e2e/test_cli.py::TestCliWorkflow::test_scenario_validate_rejects_broken]}
+  FR-003: {title: Deterministic state transitions, priority: must, phase: 1, status: implemented,
+    modules: [scenario/engine.py, scenario/state.py], tests: [tests/integration/test_run_pipeline.py::TestRunPipeline::test_ten_consecutive_runs_replay_identically]}
+  FR-004: {title: Multiple valid solutions, priority: should, phase: 1, status: implemented,
+    modules: [scenario/conditions.py], tests: [tests/e2e/test_cli.py, scenarios/login-env-var, scenarios/config-path]}
+  FR-005: {title: Difficulty and tags, priority: should, phase: 1, status: implemented,
+    modules: [scenario/package.py, persistence/db.py], tests: [tests/e2e/test_api.py::TestApi::test_health_and_catalog]}
+  FR-006: {title: Canonical action protocol, priority: must, phase: 1, status: implemented,
+    modules: [protocol/actions.py], tests: [tests/contract/test_protocol_contracts.py]}
+  FR-007: {title: Adapter conformance suite, priority: must, phase: 1, status: implemented,
+    modules: [sdk/conformance.py], tests: [tests/integration/test_adapters_and_qwen.py::TestConformance]}
+  FR-008: {title: Agent revision immutability, priority: must, phase: 1, status: implemented,
+    modules: [domain/model.py, application/services.py], tests: [tests/e2e/test_cli.py]}
+  FR-009: {title: Model-provider neutrality, priority: must, phase: 1, status: implemented,
+    modules: [adapters/openai_compat.py, adapters/reference.py], tests: [tests/integration/test_adapters_and_qwen.py::TestOpenAICompatAdapter]}
+  FR-010: {title: Pluggable observation renderers, priority: must, phase: 2, status: implemented,
+    modules: [renderers/], tests: [tests/integration/test_renderers.py]}
+  FR-011: {title: Stateful multi-turn context, priority: must, phase: 2, status: implemented,
+    modules: [orchestration/runner.py, renderers/qwen.py], tests: [tests/unit/test_engine.py::TestHandlers::test_test_run_fail_then_pass]}
+  FR-012: {title: Simulation conformance checks, priority: must, phase: 2, status: implemented,
+    modules: [renderers/base.py, renderers/hybrid.py], tests: [tests/integration/test_renderers.py::TestHybridRenderer::test_contradiction_retries_then_falls_back]}
+  FR-013: {title: Seeded perturbations, priority: should, phase: 2, status: implemented,
+    modules: [scenario/engine.py], tests: [tests/unit/test_engine.py::TestPerturbations]}
+  FR-014: {title: Provider fallback, priority: should, phase: 2, status: implemented,
+    modules: [renderers/hybrid.py], tests: [tests/integration/test_renderers.py::TestHybridRenderer::test_provider_outage_falls_back]}
+  FR-015: {title: Run lifecycle, priority: must, phase: 1, status: implemented,
+    modules: [domain/model.py, persistence/db.py], tests: [tests/integration/test_persistence.py::TestRunLifecycle]}
+  FR-016: {title: Limits and budgets, priority: must, phase: 1, status: implemented,
+    modules: [policy/engine.py], tests: [tests/unit/test_policy.py::TestLimits]}
+  FR-017: {title: Cancellation, priority: must, phase: 1, status: implemented,
+    modules: [orchestration/runner.py, api/app.py], tests: [tests/integration/test_adapters_and_qwen.py::TestConformance]}
+  FR-018: {title: Parallel suite execution, priority: should, phase: 1, status: implemented,
+    modules: [orchestration/suite.py], tests: [tests/e2e/test_cli.py::TestCliWorkflow::test_suite_command]}
+  FR-019: {title: Multidimensional scoring, priority: must, phase: 2, status: implemented,
+    modules: [scoring/engine.py], tests: [tests/unit/test_scoring.py::TestScorecard::test_all_dimensions_present]}
+  FR-020: {title: Evidence-linked findings, priority: must, phase: 2, status: implemented,
+    modules: [scoring/engine.py, scoring/facts.py], tests: [tests/unit/test_scoring.py::TestScorecard::test_every_finding_has_evidence]}
+  FR-021: {title: Rule and rubric composition, priority: must, phase: 2, status: implemented,
+    modules: [scoring/engine.py, scoring/judge.py], tests: [tests/unit/test_scoring.py]}
+  FR-022: {title: Comparison reports, priority: must, phase: 2, status: implemented,
+    modules: [reports/compare.py], tests: [tests/contract/test_manifest_and_reports.py::TestComparisonContract]}
+  FR-023: {title: Regression gates, priority: should, phase: 3, status: implemented,
+    modules: [reports/compare.py, cli/main.py], tests: [tests/e2e/test_cli.py::TestCliWorkflow::test_run_replay_report_compare]}
+  FR-024: {title: Failure clustering, priority: could, phase: 3, status: deferred,
+    modules: [], tests: [], note: newly_failed grouping exists; signature clustering deferred}
+  FR-025: {title: Full timeline, priority: must, phase: 3, status: implemented,
+    modules: [web/src/app.ts, api/app.py], tests: [tests/e2e/test_api.py]}
+  FR-026: {title: Patch and scope view, priority: must, phase: 3, status: implemented,
+    modules: [reports/run_report.py, web/src/app.ts], tests: [tests/unit/test_engine.py::TestHandlers::test_git_diff_and_status]}
+  FR-027: {title: Replay, priority: must, phase: 1, status: implemented,
+    modules: [orchestration/replay.py], tests: [tests/integration/test_run_pipeline.py]}
+  FR-028: {title: Export formats, priority: should, phase: 3, status: implemented,
+    modules: [reports/exporters.py, reports/run_report.py], tests: [tests/e2e/test_cli.py::TestCliWorkflow::test_run_replay_report_compare]}
+  FR-029: {title: Isolated container validation, priority: should, phase: 4, status: implemented,
+    modules: [validation/real.py], tests: [tests/security/test_security.py, manual: promote workflow]}
+  FR-030: {title: Simulation calibration records, priority: should, phase: 4, status: implemented,
+    modules: [reports/compare.py::calibration_report, validation/real.py], tests: [tests/contract/test_manifest_and_reports.py]}
+  FR-031: {title: Local workspace management, priority: must, phase: 1, status: implemented,
+    modules: [persistence/workspace.py], tests: [tests/integration/test_persistence.py::TestWorkspace]}
+  FR-032: {title: Secret references, priority: must, phase: 1, status: implemented,
+    modules: [util/secrets.py], tests: [tests/security/test_security.py::TestSecretLeakage]}
+nfr_highlights:
+  NFR-002: {title: Reproducibility, tests: [tests/integration/test_run_pipeline.py::TestRunPipeline::test_ten_consecutive_runs_replay_identically]}
+  NFR-006: {title: Security / no host execution, tests: [tests/security/test_security.py::TestNoHostExecution]}
+  NFR-012: {title: Offline operation, tests: [tests/integration/test_renderers.py::TestDeterministicRenderer]}
+  NFR-014: {title: Data integrity, tests: [tests/unit/test_events_and_secrets.py::TestHashChain, tests/integration/test_persistence.py::TestEventStore]}

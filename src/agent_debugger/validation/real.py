@@ -25,6 +25,23 @@ def detect_container_runtime() -> str | None:
     return None
 
 
+#: stderr signatures meaning the runtime daemon itself failed — an
+#: infrastructure condition, never a validation verdict (PRD §19.3).
+_DAEMON_FAILURE_SIGNS = (
+    "failed to connect to the docker api",
+    "cannot connect to the docker daemon",
+    "error during connect",
+    "docker daemon is not running",
+    "no such image",
+    "unable to find image",
+)
+
+
+def _daemon_failure(stderr: str) -> bool:
+    lowered = stderr.lower()
+    return any(sign in lowered for sign in _DAEMON_FAILURE_SIGNS)
+
+
 def _apply_patch_to_fixture(fixture_dir: Path, changed_files: dict[str, str], final_files: dict[str, str]) -> None:
     for path, kind in changed_files.items():
         target = fixture_dir / path
@@ -94,6 +111,12 @@ def run_real_validation(
                 stdout, stderr = proc.stdout[-20000:], proc.stderr[-20000:]
             except subprocess.TimeoutExpired:
                 exit_code, stdout, stderr = -1, "", "timeout"
+            if exit_code != 0 and _daemon_failure(stderr):
+                raise DependencyError(
+                    "Container runtime daemon unavailable or image missing; "
+                    "real validation not attempted",
+                    details={"stderr": stderr[-2000:], "runtime": runtime},
+                )
             evidence.append(
                 {
                     "command": command,

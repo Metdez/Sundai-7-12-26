@@ -1,0 +1,391 @@
+{
+  "protocol_version": "0.1.0",
+  "schema_versions": {
+    "action_protocol": "0.1.0",
+    "event": "0.1.0",
+    "scenario": "1.0.0",
+    "run_manifest": "0.1.0",
+    "report": "0.1.0"
+  },
+  "tools": [
+    {
+      "name": "agent.give_up",
+      "parameters": {
+        "properties": {
+          "reason": {
+            "default": "",
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "title": "_GiveUp",
+        "type": "object"
+      },
+      "protocol_version": "0.1.0"
+    },
+    {
+      "name": "agent.hypothesis",
+      "parameters": {
+        "properties": {
+          "statement": {
+            "minLength": 1,
+            "title": "Statement",
+            "type": "string"
+          }
+        },
+        "required": [
+          "statement"
+        ],
+        "title": "_Hypothesis",
+        "type": "object"
+      },
+      "protocol_version": "0.1.0"
+    },
+    {
+      "name": "agent.submit",
+      "parameters": {
+        "properties": {
+          "summary": {
+            "default": "",
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "title": "_Submit",
+        "type": "object"
+      },
+      "protocol_version": "0.1.0"
+    },
+    {
+      "name": "env.get",
+      "parameters": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "scope": {
+            "default": "test",
+            "title": "Scope",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "_EnvGet",
+        "type": "object"
+      },
+      "protocol_version": "0.1.0"
+    },
+    {
+      "name": "env.set",
+      "parameters": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          },
+          "scope": {
+            "default": "test",
+            "title": "Scope",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "value"
+        ],
+        "title": "_EnvSet",
+        "type": "object"
+      },
+      "protocol_version": "0.1.0"
+    },
+    {
+      "name": "fs.delete",
+      "parameters": {
+        "properties": {
+          "path": {
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "title": "_FsDelete",
+        "type": "object"
+      },
+      "protocol_version": "0.1.0"
+    },
+    {
+      "name": "fs.list",
+      "parameters": {
+        "properties": {
+          "path": {
+            "default": ".",
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "title": "_FsList",
+        "type": "object"
+      },
+      "protocol_version": "0.1.0"
+    },
+    {
+      "name": "fs.patch",
+      "parameters": {
+        "$defs": {
+          "_PatchEdit": {
+            "properties": {
+              "old_text": {
+                "title": "Old Text",
+                "type": "string"
+              },
+              "new_text": {
+                "title": "New Text",
+                "type": "string"
+              }
+            },
+            "required": [
+              "old_text",
+              "new_text"
+            ],
+            "title": "_PatchEdit",
+            "type": "object"
+          }
+        },
+        "properties": {
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "mode": {
+            "default": "edit",
+            "pattern": "^(edit|create|overwrite)$",
+            "title": "Mode",
+            "type": "string"
+          },
+          "edits": {
+            "items": {
+              "$ref": "#/$defs/_PatchEdit"
+            },
+            "title": "Edits",
+            "type": "array"
+          },
+          "content": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Content"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "title": "_FsPatch",
+        "type": "object"
+      },
+      "protocol_version": "0.1.0"
+    },
+    {
+      "name": "fs.read",
+      "parameters": {
+        "properties": {
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "start_line": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Start Line"
+          },
+          "end_line": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "End Line"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "title": "_FsRead",
+        "type": "object"
+      },
+      "protocol_version": "0.1.0"
+    },
+    {
+      "name": "fs.search",
+      "parameters": {
+        "properties": {
+          "query": {
+            "minLength": 1,
+            "title": "Query",
+            "type": "string"
+          },
+          "glob": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Glob"
+          },
+          "regex": {
+            "default": false,
+            "title": "Regex",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "title": "_FsSearch",
+        "type": "object"
+      },
+      "protocol_version": "0.1.0"
+    },
+    {
+      "name": "git.diff",
+      "parameters": {
+        "properties": {
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Path"
+          }
+        },
+        "title": "_GitDiff",
+        "type": "object"
+      },
+      "protocol_version": "0.1.0"
+    },
+    {
+      "name": "git.status",
+      "parameters": {
+        "properties": {},
+        "title": "_GitStatus",
+        "type": "object"
+      },
+      "protocol_version": "0.1.0"
+    },
+    {
+      "name": "log.read",
+      "parameters": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "_LogRead",
+        "type": "object"
+      },
+      "protocol_version": "0.1.0"
+    },
+    {
+      "name": "net.request",
+      "parameters": {
+        "properties": {
+          "url": {
+            "title": "Url",
+            "type": "string"
+          },
+          "method": {
+            "default": "GET",
+            "title": "Method",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "title": "_NetRequest",
+        "type": "object"
+      },
+      "protocol_version": "0.1.0"
+    },
+    {
+      "name": "shell.run",
+      "parameters": {
+        "properties": {
+          "command": {
+            "minLength": 1,
+            "title": "Command",
+            "type": "string"
+          }
+        },
+        "required": [
+          "command"
+        ],
+        "title": "_ShellRun",
+        "type": "object"
+      },
+      "protocol_version": "0.1.0"
+    },
+    {
+      "name": "test.run",
+      "parameters": {
+        "properties": {
+          "suite": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Suite"
+          }
+        },
+        "title": "_TestRun",
+        "type": "object"
+      },
+      "protocol_version": "0.1.0"
+    }
+  ]
+}

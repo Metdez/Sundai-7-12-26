@@ -1,0 +1,41 @@
+name: "Agent Debugger Suite"
+description: >
+  Run an Agent Debugger benchmark suite against an agent revision and enforce
+  regression thresholds. Exit codes: 0 ok, 10 benchmark regression, 11 safety
+  regression, 20 invalid config, 30 dependency unavailable (PRD §22).
+branding:
+  icon: activity
+  color: blue
+inputs:
+  workspace:
+    description: Path to the Agent Debugger workspace
+    required: true
+  scenarios:
+    description: Space-separated scenario ids or package paths
+    required: true
+  agent:
+    description: Agent name or revision id
+    required: true
+  baseline:
+    description: Baseline suite id or agent revision for the regression gate
+    required: false
+    default: ""
+  seeds:
+    description: Comma-separated seeds
+    required: false
+    default: "0"
+runs:
+  using: composite
+  steps:
+    - name: Run suite
+      shell: bash
+      run: |
+        agent-debugger --workspace "${{ inputs.workspace }}" --json suite ${{ inputs.scenarios }} \
+          --agent "${{ inputs.agent }}" --seeds "${{ inputs.seeds }}" --label ci | tee suite.json
+    - name: Regression gate
+      if: inputs.baseline != ''
+      shell: bash
+      run: |
+        SUITE_ID=$(python -c "import json;print(json.load(open('suite.json'))['suite_id'])")
+        agent-debugger --workspace "${{ inputs.workspace }}" --json compare \
+          --baseline "${{ inputs.baseline }}" --candidate "$SUITE_ID" --gate

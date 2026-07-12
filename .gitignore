@@ -6,8 +6,8 @@ __pycache__/
 .tmp/
 .agent-debugger/
 node_modules/
-dist/
-build/
+/dist/
+/build/
 credentials.json
 token.json
 .env

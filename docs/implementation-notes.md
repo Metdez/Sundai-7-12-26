@@ -1,0 +1,69 @@
+# Implementation Notes (new project knowledge — not a PRD slice)
+
+Decisions, gotchas, and conventions discovered while building v0.1.0 that the
+PRD does not specify. The PRD remains the source of truth for requirements;
+this file records how the implementation resolved its open edges.
+
+## Decisions
+
+- **Verification is part of "solved."** Success predicates that reference a
+  test suite require the suite's *authoritative status* to be `pass`, and the
+  status only changes when the agent runs `test.run`. An agent that applies a
+  correct fix but never re-runs tests terminates as `submitted_unsolved`.
+  This is deliberate: it operationalizes "simulation is not proof" at the
+  agent level and is what makes the careful-vs-hasty dogfooding comparison
+  produce a completion delta, not just behavioral deltas.
+- **Events are authoritative in JSONL, metadata in SQLite.** PRD §15.5 allows
+  "database with export to JSONL"; local-first v0.1 inverts that: the
+  hash-chained `events.jsonl` per run is the record of truth (human-readable,
+  core principle 9), SQLite only indexes runs/agents/scenarios for queries.
+- **Approval gates auto-deny in non-interactive runs.** `require_approval`
+  emits `approval.requested` + `approval.resolved(approved=false, reason:
+  non-interactive run)` and the attempt stays in the transcript and safety
+  score. The `paused_for_approval` lifecycle state exists in the FSM for the
+  future interactive path.
+- **Unknown action types are envelope-valid.** A structurally valid action
+  with an unknown type is not an adapter defect; it flows to the state engine
+  and fails as agent behavior (`unknown_action`). Malformed envelopes and
+  parameter-schema violations are `ProtocolError` (adapter defect).
+- **Reference agent = configurable behavioral policy, not an LLM.** For
+  offline determinism the dogfooding agent takes an investigation list, an
+  optional hypothesis, a fix recipe, and a `verify_fix` flag from its config.
+  Live-model evaluation uses the `openai-compat` adapter instead.
+- **Blocked attempts mutate state flags.** `destructive/external/privileged`
+  attempts set flags on authoritative state (so failure predicates and the
+  state hash reflect them), and replay reapplies the same flags from recorded
+  policy decisions.
+- **Web client is TypeScript without a framework.** The PRD says "TypeScript
+  React"; v0.1 ships strict-mode TypeScript compiled with esbuild but no
+  React, keeping the dashboard a single 8 kB module. Revisit if the UI grows
+  interactive state beyond list/detail.
+- **Daemon failures never become validation verdicts.** `promote` raises a
+  dependency error (exit 30) when the container runtime daemon is
+  unreachable or the image is missing, instead of recording
+  `real_success=false` — found by dogfooding promote on a machine where
+  Docker Desktop was installed but not running.
+
+## Gotchas
+
+- `sqlite3` connections cannot cross threads; FastAPI sync endpoints run in a
+  threadpool. `MetadataDB` opens one connection per thread. Close workspaces
+  in tests (`Workspace.close()`) or Windows temp-dir cleanup fails.
+- Shell allowlist patterns are matched with `re.fullmatch`, which is what
+  makes `cat .env.example; rm -rf /` fail closed (see security tests).
+- Scenario `pass_when` conditions must match what the *fixed file actually
+  contains*, not the conceptual fix — e.g. code using
+  `f"{CONFIG_ROOT}/development.yaml"` never contains the literal
+  `config/development.yaml`.
+- Perturbation schedules are precomputed per run from `seed` for turns
+  0..499, so a perturbation draw never depends on how many rules matched
+  earlier turns (replay-stable).
+
+## Backlog (content and features, not requirements changes)
+
+- 5 more scenario tasks to reach the Phase 2 target of ten (current: five
+  across five fictional repos).
+- Failure-signature clustering (FR-024, "could") beyond newly-solved /
+  newly-failed grouping.
+- Interactive approval flow using the existing `paused_for_approval` state.
+- SSE-driven live timeline in the dashboard (endpoint exists; UI polls).

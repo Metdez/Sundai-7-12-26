@@ -64,3 +64,9 @@ This file is the entry point for any AI agent working in this repo. It routes yo
 - The PRD content itself is frozen: do not add to or remove from what the document says. If requirements change, that's a PRD edit followed by a re-split, not a docs/ edit.
 - Doc files under `docs/` are verbatim slices, not summaries or rewrites — safe to trust their wording as identical to the PRD.
 - When you learn something during implementation that isn't in the PRD (a decision, a gotcha, a convention), that's new project knowledge — add it as its own file rather than editing a PRD slice, and link it from this router.
+
+## Implementation knowledge (post-PRD, added during the build)
+
+- [implementation-notes.md](docs/implementation-notes.md) — decisions the PRD left open (verification-is-part-of-solved, JSONL-authoritative events, approval auto-deny, reference-agent design), gotchas (SQLite threading, fullmatch allowlists, pass_when literalism), and the content backlog.
+- [requirements-matrix.yaml](docs/requirements-matrix.yaml) — machine-readable FR/NFR → module → test → phase traceability (PRD §23).
+- [protocols/action-protocol-0.1.0.json](docs/protocols/action-protocol-0.1.0.json) — generated canonical action JSON schemas (regenerate from `agent_debugger.protocol.actions.tool_contract()` after protocol changes).
