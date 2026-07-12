@@ -234,7 +234,12 @@ class MetadataDB:
         self._conn.commit()
 
     def get_run(self, run_id: str) -> dict[str, Any] | None:
-        row = self._conn.execute("SELECT * FROM runs WHERE run_id=?", (run_id,)).fetchone()
+        row = self._conn.execute(
+            "SELECT runs.*, agents.name AS agent_name, agents.config_json AS agent_config_json "
+            "FROM runs LEFT JOIN agents ON runs.agent_revision_id = agents.revision_id "
+            "WHERE run_id=?",
+            (run_id,),
+        ).fetchone()
         return self._row_to_run(row) if row else None
 
     def list_runs(
@@ -245,21 +250,24 @@ class MetadataDB:
         status: str | None = None,
         limit: int = 200,
     ) -> list[dict[str, Any]]:
-        query = "SELECT * FROM runs WHERE 1=1"
+        query = (
+            "SELECT runs.*, agents.name AS agent_name, agents.config_json AS agent_config_json "
+            "FROM runs LEFT JOIN agents ON runs.agent_revision_id = agents.revision_id WHERE 1=1"
+        )
         params: list[Any] = []
         if scenario_id:
-            query += " AND scenario_id=?"
+            query += " AND runs.scenario_id=?"
             params.append(scenario_id)
         if agent_revision_id:
-            query += " AND agent_revision_id=?"
+            query += " AND runs.agent_revision_id=?"
             params.append(agent_revision_id)
         if suite_id:
-            query += " AND suite_id=?"
+            query += " AND runs.suite_id=?"
             params.append(suite_id)
         if status:
-            query += " AND status=?"
+            query += " AND runs.status=?"
             params.append(status)
-        query += " ORDER BY created_at DESC LIMIT ?"
+        query += " ORDER BY runs.created_at DESC LIMIT ?"
         params.append(limit)
         return [self._row_to_run(r) for r in self._conn.execute(query, params).fetchall()]
 
@@ -273,4 +281,10 @@ class MetadataDB:
         item["metrics"] = json.loads(metrics_json) if metrics_json else None
         item["scorecard"] = json.loads(scorecard_json) if scorecard_json else None
         item["error"] = json.loads(error_json) if error_json else None
+        # Human-readable agent identity for display (registered name + actual
+        # model string), joined from the agents table alongside the run row.
+        agent_config_json = item.pop("agent_config_json", None)
+        item["agent_model"] = (
+            json.loads(agent_config_json).get("model_identifier") if agent_config_json else None
+        )
         return item

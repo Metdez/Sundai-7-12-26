@@ -8,6 +8,8 @@ interface RunRow {
   run_id: string;
   scenario_id: string;
   agent_revision_id: string;
+  agent_name: string | null;
+  agent_model: string | null;
   status: string;
   terminal_reason: string | null;
   seed: number;
@@ -15,6 +17,13 @@ interface RunRow {
   created_at: string;
   scorecard: Scorecard | null;
   metrics: Record<string, number> | null;
+}
+
+function agentLabel(run: RunRow): string {
+  if (run.agent_name && run.agent_model) return `${run.agent_name} (${run.agent_model})`;
+  if (run.agent_name) return run.agent_name;
+  if (run.agent_model) return run.agent_model;
+  return run.agent_revision_id;
 }
 
 interface Finding {
@@ -88,6 +97,7 @@ async function loadRuns(): Promise<void> {
                 data-run="${esc(run.run_id)}" aria-pressed="${run.run_id === selectedRun}">
           <span class="run-id">${esc(run.run_id)}</span>
           <span class="run-meta">${esc(run.scenario_id)} · seed ${run.seed}</span>
+          <span class="run-meta">${esc(agentLabel(run))}</span>
           <span class="run-meta">${badge(run.terminal_reason, run.status)}
             ${run.scorecard ? `<strong>${run.scorecard.overall_score}</strong>/100` : ""}</span>
         </button>
@@ -203,7 +213,7 @@ async function selectRun(runId: string): Promise<void> {
     <h2>${esc(run.run_id)} ${badge(run.terminal_reason, run.status)}</h2>
     <dl class="manifest">
       <dt>Scenario</dt><dd>${esc(run.scenario_id)} v${esc(manifest.scenario_version)}</dd>
-      <dt>Agent</dt><dd><code>${esc(run.agent_revision_id)}</code></dd>
+      <dt>Agent</dt><dd>${esc(agentLabel(run))} <code class="agent-rev">${esc(run.agent_revision_id)}</code></dd>
       <dt>Renderer</dt><dd>${esc(manifest.renderer)}</dd>
       <dt>Seed</dt><dd>${run.seed}</dd>
       <dt>Scenario digest</dt><dd><code>${esc(String(manifest.scenario_digest).slice(0, 16))}…</code></dd>
