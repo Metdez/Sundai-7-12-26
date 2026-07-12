@@ -16,7 +16,11 @@ _SECRET_VALUE_PATTERNS = [
     re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
     re.compile(r"\bgh[pousr]_[A-Za-z0-9]{20,}\b"),
     re.compile(r"\bBearer\s+[A-Za-z0-9._\-]{16,}\b"),
-    re.compile(r"(?i)\b(api[_-]?key|password|secret|token)\s*[=:]\s*['\"]?[^\s'\"]{8,}"),
+    # Value must look like an opaque literal (letters/digits/-_+/), not code:
+    # excludes '(' and '.' so `secret = os.environ.get("X")` is left alone —
+    # found via dogfooding: a real agent saw its own source code mangled into
+    # `[REDACTED]"JWT_SECRET")` and spiraled trying to figure out why.
+    re.compile(r"(?i)\b(api[_-]?key|password|secret|token)\s*[=:]\s*['\"]?[A-Za-z0-9_\-+/]{8,}['\"]?"),
 ]
 
 REDACTED = "[REDACTED]"
