@@ -1,0 +1,2 @@
+[console_scripts]
+agent-debugger = agent_debugger.cli.main:main

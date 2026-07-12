@@ -1,0 +1,14 @@
+{
+  "name": "agent-debugger-web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Web review client for Agent Debugger (TypeScript, no framework).",
+  "scripts": {
+    "build": "esbuild src/app.ts --bundle --outfile=dist/app.js --format=esm --target=es2020 && node scripts/copy-static.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "esbuild": "^0.20.0",
+    "typescript": "^5.4.0"
+  }
+}

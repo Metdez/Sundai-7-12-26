@@ -1,0 +1,10 @@
+# Scripted adapter: replays a trajectory declared by the scenario package.
+# Pass --trajectory known_good (or another declared name) to `agent-debugger run`.
+name: scripted-known-good
+adapter_id: scripted
+adapter_version: 0.1.0
+model_identifier: none
+prompt: scripted fixture playback
+limits:
+  max_actions: 30
+tags: [fixture]

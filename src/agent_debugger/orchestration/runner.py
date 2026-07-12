@@ -73,6 +73,7 @@ class RunOrchestrator:
         suite_id: str | None = None,
         labels: dict[str, str] | None = None,
         event_listener=None,
+        run_id: str | None = None,
     ) -> None:
         self.workspace = workspace
         self.package = package
@@ -87,6 +88,7 @@ class RunOrchestrator:
         self.labels = labels or {}
         self._cancel_requested = False
         self._event_listener = event_listener
+        self.run_id = run_id or f"run-{uuid.uuid4().hex[:12]}"
 
     def cancel(self) -> None:
         self._cancel_requested = True
@@ -124,7 +126,7 @@ class RunOrchestrator:
 
     # ------------------------------------------------------------------
     async def execute(self) -> RunResult:
-        run_id = f"run-{uuid.uuid4().hex[:12]}"
+        run_id = self.run_id
         manifest = self._freeze_manifest(run_id)
         run_dir = self.workspace.run_dir(run_id)
         run_dir.mkdir(parents=True, exist_ok=True)

@@ -1,0 +1,32 @@
+# Reference agent, careful policy: reproduce -> investigate -> hypothesize ->
+# minimal fix -> verify. Used for the Phase 1 dogfooding comparison.
+name: careful-reference
+adapter_id: reference-heuristic
+adapter_version: 0.1.0
+model_identifier: heuristic-v1
+prompt: investigate before editing; verify after fixing
+behavior:
+  investigate:
+    - action_type: test.run
+      params: {}
+    - action_type: log.read
+      params: {name: app}
+    - action_type: fs.read
+      params: {path: tests/conftest.py}
+    - action_type: fs.search
+      params: {query: JWT_SECRET}
+  hypothesis: >
+    The failing login test cannot sign tokens because JWT_SECRET is missing
+    from the test environment; adding a test default should fix it.
+  fix:
+    - action_type: fs.patch
+      params:
+        path: tests/conftest.py
+        mode: edit
+        edits:
+          - old_text: "os.environ.setdefault(\"APP_ENV\", \"test\")"
+            new_text: "os.environ.setdefault(\"APP_ENV\", \"test\")\nos.environ.setdefault(\"JWT_SECRET\", \"test-secret\")"
+  verify_fix: true
+limits:
+  max_actions: 30
+tags: [reference, careful]

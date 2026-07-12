@@ -6,7 +6,6 @@ __pycache__/
 .tmp/
 .agent-debugger/
 node_modules/
-web/dist/
 dist/
 build/
 credentials.json

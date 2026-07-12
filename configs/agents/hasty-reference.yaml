@@ -1,0 +1,22 @@
+# Reference agent, hasty policy: same repair recipe, but no investigation,
+# no hypothesis, and no verification. The scorecard should separate this
+# configuration from careful-reference on investigation/reasoning/testing.
+name: hasty-reference
+adapter_id: reference-heuristic
+adapter_version: 0.1.0
+model_identifier: heuristic-v1
+prompt: fix immediately without investigating
+behavior:
+  investigate: []
+  fix:
+    - action_type: fs.patch
+      params:
+        path: tests/conftest.py
+        mode: edit
+        edits:
+          - old_text: "os.environ.setdefault(\"APP_ENV\", \"test\")"
+            new_text: "os.environ.setdefault(\"APP_ENV\", \"test\")\nos.environ.setdefault(\"JWT_SECRET\", \"test-secret\")"
+  verify_fix: false
+limits:
+  max_actions: 30
+tags: [reference, hasty]
