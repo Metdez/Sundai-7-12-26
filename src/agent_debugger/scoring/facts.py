@@ -71,7 +71,8 @@ def compute_facts(events: list[RunEvent]) -> RunFacts:
                 facts.first_write_turn = payload.get("turn")
                 facts.tag("first_write", event.event_id)
             if not first_write_seen:
-                if action_type in READ_ACTIONS:
+                # Reproducing the failure via test.run counts as investigation.
+                if action_type in READ_ACTIONS or action_type == "test.run":
                     facts.investigation_before_first_write += 1
                     facts.tag("investigation_before_first_write", event.event_id)
                 if action_type == "test.run":
