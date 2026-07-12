@@ -80,6 +80,53 @@ class TestOpenAICompatAdapter:
         assert raw["params"] == {"path": "src/app.py"}
         assert adapter.usage()["tokens"] == 123
 
+    async def test_parallel_tool_calls_all_get_a_response(self):
+        """GPT-5.4 via OpenRouter returns multiple tool_calls in one turn even
+        though the protocol executes one action per turn. Every tool_call
+        must receive a matching tool-role response or the next request 400s
+        with 'No tool output found for function call <id>' (found live)."""
+        calls_seen = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            body = json.loads(request.content)
+            calls_seen.append(body["messages"])
+            if len(calls_seen) == 1:
+                return httpx.Response(200, json={
+                    "choices": [{"message": {
+                        "role": "assistant", "content": None,
+                        "tool_calls": [
+                            {"id": "call_a", "type": "function", "function": {
+                                "name": "git__status", "arguments": "{}"}},
+                            {"id": "call_b", "type": "function", "function": {
+                                "name": "fs__list", "arguments": '{"path": "."}'}},
+                        ],
+                    }}],
+                    "usage": {"total_tokens": 50},
+                })
+            # Second call must include a tool response for BOTH call_a and call_b.
+            tool_msgs = [m for m in body["messages"] if m.get("role") == "tool"]
+            assert {m["tool_call_id"] for m in tool_msgs} == {"call_a", "call_b"}
+            return httpx.Response(200, json={
+                "choices": [{"message": {"role": "assistant", "content": "done"}}],
+                "usage": {"total_tokens": 10},
+            })
+
+        from agent_debugger.sdk.conformance import CONFORMANCE_CONTEXT
+
+        adapter = OpenAICompatAdapter(
+            endpoint="http://mock/v1", model="m", system_prompt="s", client=openai_mock(handler)
+        )
+        await adapter.start(CONFORMANCE_CONTEXT)
+        first = await adapter.next_action(None)
+        assert first["action_type"] == "git.status"  # only tool_calls[0] is executed
+
+        from agent_debugger.protocol.actions import Observation
+
+        obs = Observation(turn=1, action_type="git.status", status="ok", body="clean")
+        second = await adapter.next_action(obs)  # must not raise / 400
+        assert second["action_type"] == "agent.submit"
+        assert len(calls_seen) == 2
+
     async def test_plain_text_becomes_submission(self):
         def handler(request):
             return httpx.Response(200, json={

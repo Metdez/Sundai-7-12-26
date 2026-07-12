@@ -60,6 +60,14 @@ class OpenAICompatAdapter:
         self._canceled = False
         self._tokens = 0
         self._pending_tool_call_id: str | None = None
+        # Some models (observed: GPT-5.4 via OpenRouter) return multiple
+        # parallel tool_calls in one assistant turn even though the canonical
+        # protocol executes one action per turn. Every tool_call in an
+        # assistant message must get a matching tool-role response before the
+        # next request, or OpenAI-compatible backends reject it with
+        # "No tool output found for function call <id>". Only the first call
+        # is actually executed; the rest get a synthetic not-executed reply.
+        self._unexecuted_tool_call_ids: list[str] = []
 
     async def start(self, context: AgentContext) -> None:
         self._messages = [
@@ -87,6 +95,18 @@ class OpenAICompatAdapter:
                 }
             )
             self._pending_tool_call_id = None
+            for extra_id in self._unexecuted_tool_call_ids:
+                self._messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": extra_id,
+                        "content": (
+                            "Not executed: only one action is processed per turn. "
+                            "Propose this again on a later turn if still needed."
+                        ),
+                    }
+                )
+            self._unexecuted_tool_call_ids = []
 
         headers = {"Content-Type": "application/json"}
         api_key = resolve_secret_ref(self.api_key_ref)
@@ -127,6 +147,7 @@ class OpenAICompatAdapter:
             }
         call = tool_calls[0]
         self._pending_tool_call_id = call.get("id")
+        self._unexecuted_tool_call_ids = [c.get("id") for c in tool_calls[1:]]
         name = call["function"]["name"].replace("__", ".")
         try:
             params = json.loads(call["function"].get("arguments") or "{}")

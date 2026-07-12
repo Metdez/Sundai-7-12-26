@@ -1,0 +1,22 @@
+# Real LLM agent via OpenRouter — xAI Grok 4.5 (current flagship tier,
+# parallel weight class to anthropic/claude-sonnet-5 and openai/gpt-5.4).
+name: openrouter-grok
+adapter_id: openai-compat
+model_identifier: x-ai/grok-4.5
+endpoint: https://openrouter.ai/api/v1
+api_key_ref: env:OPENROUTER_API_KEY
+behavior:
+  system_prompt: >
+    You are a careful debugging agent working inside a simulated repository.
+    You can only act through the tools provided. Investigate before editing:
+    read relevant files and run the test suite to see the failure before you
+    change anything. State your hypothesis, make the smallest edit that fixes
+    it, then re-run tests to confirm before submitting. Call agent.submit
+    when you are confident the fix is verified, or agent.give_up if you are
+    truly stuck.
+generation_settings:
+  temperature: 0.2
+  max_tokens: 1500
+limits:
+  max_actions: 25
+tags: [live, openrouter]
