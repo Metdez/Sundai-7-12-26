@@ -18,6 +18,8 @@ function badge(reason, status) {
   return `<span class="badge ${cls}">${esc(label)}</span>`;
 }
 function agentLabel(run) {
+  if (run.agent_name && run.agent_model && run.agent_name === run.agent_model.replace(/\//g, "-"))
+    return run.agent_model;
   if (run.agent_name && run.agent_model)
     return `${run.agent_name} (${run.agent_model})`;
   if (run.agent_name)
@@ -37,6 +39,8 @@ function parseHash() {
     return { view: "compare", a: parts[1], b: parts[2] };
   if (parts[0] === "rubric")
     return { view: "rubric" };
+  if (parts[0] === "models")
+    return { view: "models" };
   if (parts[0] === "scenarios")
     return { view: "scenarios" };
   if (parts[0] === "scenario" && parts[1])
@@ -54,6 +58,7 @@ function parseHash() {
 }
 var TAB_FOR_VIEW = {
   overview: "overview",
+  models: "models",
   scenarios: "scenarios",
   scenario: "scenarios",
   runs: "runs",
@@ -74,6 +79,8 @@ async function render() {
   try {
     if (currentRoute.view === "overview")
       await renderOverview(view);
+    else if (currentRoute.view === "models")
+      await renderModels(view);
     else if (currentRoute.view === "scenarios")
       await renderScenarios(view);
     else if (currentRoute.view === "scenario")
@@ -156,17 +163,109 @@ function buildMatrix(runs, scenarios) {
     list.sort((a, b) => b.created_at.localeCompare(a.created_at));
   return { rows, cols, cells };
 }
-function matrixCellHtml(cellRuns, scenarioId) {
+function rowExtremes(scenarioId, cols, cells) {
+  const scores = /* @__PURE__ */ new Map();
+  for (const col of cols) {
+    const latest = cells.get(cellKey(scenarioId, col))?.[0];
+    if (latest?.scorecard)
+      scores.set(col, latest.scorecard.overall_score);
+  }
+  const best = /* @__PURE__ */ new Set();
+  const worst = /* @__PURE__ */ new Set();
+  if (scores.size >= 2) {
+    const values = [...scores.values()];
+    const max = Math.max(...values);
+    const min = Math.min(...values);
+    if (max > min) {
+      for (const [col, value] of scores) {
+        if (value === max)
+          best.add(col);
+        if (value === min)
+          worst.add(col);
+      }
+    }
+  }
+  return { best, worst };
+}
+function matrixCellHtml(cellRuns, scenarioId, extraClass = "") {
   if (!cellRuns || !cellRuns.length)
     return `<td class="cell-none">\u2013</td>`;
   const latest = cellRuns[0];
-  const cls = latest.terminal_reason === "success" ? "cell-ok" : latest.status === "running" || latest.status === "queued" ? "cell-busy" : "cell-bad";
+  const cls = (latest.terminal_reason === "success" ? "cell-ok" : latest.status === "running" || latest.status === "queued" ? "cell-busy" : "cell-bad") + (extraClass ? ` ${extraClass}` : "");
   const label = latest.scorecard !== null ? String(latest.scorecard.overall_score) : latest.terminal_reason ?? latest.status;
   const more = cellRuns.length > 1 ? ` <a class="cell-more" href="#/scenario/${encodeURIComponent(scenarioId)}"
              title="${cellRuns.length} runs total on this scenario">+${cellRuns.length - 1}</a>` : "";
   return `<td class="${cls}">
     <a href="#/run/${esc(latest.run_id)}" target="_blank" rel="noopener"
        title="${esc(latest.run_id)} \xB7 seed ${latest.seed}">${esc(label)}</a>${more}</td>`;
+}
+var leaderboardSort = { key: "avgScore", dir: -1 };
+function sortAggs(aggs) {
+  const { key, dir } = leaderboardSort;
+  return [...aggs].sort((a, b) => {
+    if (key === "key")
+      return a.key.localeCompare(b.key) * dir;
+    const va = a[key];
+    const vb = b[key];
+    if (va === null && vb === null)
+      return a.key.localeCompare(b.key);
+    if (va === null)
+      return 1;
+    if (vb === null)
+      return -1;
+    return (va - vb) * dir || a.key.localeCompare(b.key);
+  });
+}
+function leaderboardHtml(aggs) {
+  const arrow = (key) => leaderboardSort.key === key ? leaderboardSort.dir === -1 ? " \u25BE" : " \u25B4" : "";
+  const th = (key, label) => `<th scope="col" data-sort="${key}" title="Click to sort">${esc(label)}${arrow(key)}</th>`;
+  const rows = sortAggs(aggs).map(
+    (agg, i) => `<tr>
+        <td class="rank">${i + 1}</td>
+        <th scope="row">${esc(agg.key)}</th>
+        <td>${agg.avgScore === null ? "\u2013" : `<strong>${agg.avgScore}</strong>`}</td>
+        <td>${agg.solvedScenarios}/${agg.attemptedScenarios}</td>
+        <td>${agg.avgActions ?? "\u2013"}</td>
+        <td>${agg.runCount}</td>
+      </tr>`
+  ).join("");
+  return `<table class="leaderboard" aria-label="Model leaderboard">
+      <thead><tr><th></th>${th("key", "Agent")}${th("avgScore", "Avg score")}
+        ${th("solvedScenarios", "Scenarios solved")}${th("avgActions", "Avg actions")}
+        ${th("runCount", "Runs")}</tr></thead>
+      <tbody>${rows}</tbody></table>`;
+}
+function wireLeaderboardSort() {
+  document.querySelectorAll(".leaderboard th[data-sort]").forEach((header) => {
+    header.addEventListener("click", () => {
+      const key = header.dataset.sort;
+      if (leaderboardSort.key === key) {
+        leaderboardSort = { key, dir: leaderboardSort.dir === -1 ? 1 : -1 };
+      } else {
+        leaderboardSort = { key, dir: key === "key" ? 1 : -1 };
+      }
+      void render();
+    });
+  });
+}
+function matrixHtml(matrix, cols, caption) {
+  const head = cols.map((c) => `<th scope="col">${esc(c)}</th>`).join("");
+  const rows = matrix.rows.map((row) => {
+    const extremes = rowExtremes(row.id, cols, matrix.cells);
+    return `<tr>
+        <th scope="row"><a href="#/scenario/${encodeURIComponent(row.id)}">${esc(row.title)}</a></th>
+        ${cols.map(
+      (col) => matrixCellHtml(
+        matrix.cells.get(cellKey(row.id, col)),
+        row.id,
+        extremes.best.has(col) ? "cell-best" : extremes.worst.has(col) ? "cell-worst" : ""
+      )
+    ).join("")}
+      </tr>`;
+  }).join("");
+  return `<table class="matrix" aria-label="${esc(caption)}">
+      <thead><tr><th scope="col">Scenario</th>${head}</tr></thead>
+      <tbody>${rows}</tbody></table>`;
 }
 async function renderOverview(view) {
   const [runs, scenarios] = await Promise.all([
@@ -177,38 +276,16 @@ async function renderOverview(view) {
     return;
   const aggs = aggregateAgents(runs);
   const matrix = buildMatrix(runs, scenarios);
-  const leaderboardRows = aggs.map(
-    (agg, i) => `<tr>
-        <td class="rank">${i + 1}</td>
-        <th scope="row">${esc(agg.key)}</th>
-        <td>${agg.avgScore === null ? "\u2013" : `<strong>${agg.avgScore}</strong>`}</td>
-        <td>${agg.solvedScenarios}/${agg.attemptedScenarios}</td>
-        <td>${agg.avgActions ?? "\u2013"}</td>
-        <td>${agg.runCount}</td>
-      </tr>`
-  ).join("");
-  const matrixHead = matrix.cols.map((c) => `<th scope="col">${esc(c)}</th>`).join("");
-  const matrixRows = matrix.rows.map(
-    (row) => `<tr>
-        <th scope="row"><a href="#/scenario/${encodeURIComponent(row.id)}">${esc(row.title)}</a></th>
-        ${matrix.cols.map((col) => matrixCellHtml(matrix.cells.get(cellKey(row.id, col)), row.id)).join("")}
-      </tr>`
-  ).join("");
   view.innerHTML = `
     <section class="overview" aria-label="Overview">
       <h2>Leaderboard</h2>
-      ${aggs.length ? `<table class="leaderboard" aria-label="Model leaderboard">
-              <thead><tr><th></th><th scope="col">Agent</th><th scope="col">Avg score</th>
-                <th scope="col">Scenarios solved</th><th scope="col">Avg actions</th>
-                <th scope="col">Runs</th></tr></thead>
-              <tbody>${leaderboardRows}</tbody></table>
-            <p class="hint">Average score is over scored runs only. Solved counts distinct scenarios with at least one successful run.</p>` : "<p class='empty'>No runs yet. Start one with the CLI: <code>agent-debugger run \u2026</code></p>"}
+      ${aggs.length ? `${leaderboardHtml(aggs)}
+            <p class="hint">Average score is over scored runs only. Solved counts distinct scenarios with at least one successful run. Click a column header to sort.</p>` : "<p class='empty'>No runs yet. Start one with the CLI: <code>agent-debugger run \u2026</code></p>"}
       <h2>Results by scenario</h2>
-      ${matrix.rows.length ? `<table class="matrix" aria-label="Scenario \xD7 agent results">
-              <thead><tr><th scope="col">Scenario</th>${matrixHead}</tr></thead>
-              <tbody>${matrixRows}</tbody></table>
-            <p class="hint">Each cell shows the most recent run's score \u2014 click it to open the full run in a new tab. Scenario names link to what each test measures.</p>` : "<p class='empty'>No scenarios registered. Add one with <code>agent-debugger scenario add \u2026</code></p>"}
+      ${matrix.rows.length ? `${matrixHtml(matrix, matrix.cols, "Scenario \xD7 agent results")}
+            <p class="hint">Each cell shows the most recent run's score \u2014 best in row outlined green, worst red. Click a score to open the full run in a new tab. Scenario names link to what each test measures.</p>` : "<p class='empty'>No scenarios registered. Add one with <code>agent-debugger scenario add \u2026</code></p>"}
     </section>`;
+  wireLeaderboardSort();
 }
 var CHIP = (label) => `<span class="chip">${esc(label)}</span>`;
 function truncate(text, max) {
@@ -453,6 +530,305 @@ async function renderRuns(view) {
   );
   wireCompareControls();
 }
+var modelSelection = /* @__PURE__ */ new Set();
+var modelSearch = "";
+var benchSeed = 1;
+var benchInFlight = false;
+var benchError = "";
+var keyError = "";
+var QUICK_PICK_HINTS = ["claude", "gpt", "gemini", "grok", "qwen", "deepseek"];
+var KEY_REGEX = /sk-or-[A-Za-z0-9_\-]{20,}/;
+function keyPanelHtml(status) {
+  if (status.configured) {
+    return `
+      <h3>OpenRouter key</h3>
+      <p>Key configured: <span class="key-masked">${esc(status.masked)}</span>
+        <span class="chip">${esc(status.source)}</span>
+        <button id="btn-key-remove">Remove key</button></p>
+      <p class="hint">The key lives only in the server's memory \u2014 it is never written to disk,
+        and it is gone after a server restart. Runs read it live, so replacing it takes effect immediately.</p>`;
+  }
+  return `
+    <h3>OpenRouter key</h3>
+    <div id="dropzone" class="dropzone">Drag &amp; drop a file containing your OpenRouter key here
+      <br><span class="hint">(a .txt or .env file \u2014 I'll find the sk-or-\u2026 key inside)</span></div>
+    <div class="key-row">
+      <input id="key-input" type="password" placeholder="\u2026or paste your key: sk-or-v1-\u2026" autocomplete="off">
+      <button id="btn-key-save" class="compare-btn">Save key</button>
+    </div>
+    <p id="key-error" class="err-inline">${esc(keyError)}</p>
+    <p class="hint">Get a key at openrouter.ai \u2014 one key gives access to models from every major provider.
+      It is sent to your local server only and kept in memory, never stored.</p>`;
+}
+function wireKeyPanel() {
+  document.getElementById("btn-key-remove")?.addEventListener("click", async () => {
+    await fetch("/api/v1/providers/openrouter/key", { method: "DELETE" });
+    void render();
+  });
+  const zone = document.getElementById("dropzone");
+  const input = document.getElementById("key-input");
+  const errorEl = document.getElementById("key-error");
+  const submit = async (text) => {
+    const match = text.match(KEY_REGEX);
+    if (!match) {
+      keyError = "No OpenRouter key found \u2014 expected something like sk-or-v1-\u2026";
+      if (errorEl)
+        errorEl.textContent = keyError;
+      return;
+    }
+    try {
+      const response = await fetch("/api/v1/providers/openrouter/key", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: match[0] })
+      });
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null);
+        keyError = detail?.detail?.user_message ?? (typeof detail?.detail === "string" ? detail.detail : `Rejected (HTTP ${response.status})`);
+        if (errorEl)
+          errorEl.textContent = keyError;
+        return;
+      }
+      keyError = "";
+      void render();
+    } catch (err) {
+      keyError = String(err);
+      if (errorEl)
+        errorEl.textContent = keyError;
+    }
+  };
+  document.getElementById("btn-key-save")?.addEventListener("click", () => {
+    if (input)
+      void submit(input.value);
+  });
+  input?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && input)
+      void submit(input.value);
+  });
+  if (zone) {
+    zone.addEventListener("dragover", (event) => {
+      event.preventDefault();
+      zone.classList.add("dragover");
+    });
+    zone.addEventListener("dragleave", () => zone.classList.remove("dragover"));
+    zone.addEventListener("drop", (event) => {
+      event.preventDefault();
+      zone.classList.remove("dragover");
+      const transfer = event.dataTransfer;
+      if (!transfer)
+        return;
+      const file = transfer.files?.[0];
+      if (file) {
+        if (file.size > 65536) {
+          keyError = "That file is too large to scan for a key.";
+          if (errorEl)
+            errorEl.textContent = keyError;
+          return;
+        }
+        void file.text().then((text) => void submit(text));
+      } else {
+        void submit(transfer.getData("text") ?? "");
+      }
+    });
+  }
+}
+function quickPicks(models) {
+  const picks = [];
+  for (const hint of QUICK_PICK_HINTS) {
+    const found = models.find(
+      (m) => m.id.toLowerCase().includes(hint) && !picks.some((p) => p.id === m.id)
+    );
+    if (found)
+      picks.push(found);
+  }
+  return picks;
+}
+function modelChip(model) {
+  const selected = modelSelection.has(model.id) ? " selected" : "";
+  return `<button type="button" class="chip pick${selected}" data-model="${esc(model.id)}"
+    title="${esc(model.name ?? model.id)}">${esc(model.id)}</button>`;
+}
+var lastModels = null;
+function modelListHtml(models) {
+  const selectedChips = modelSelection.size ? `<p class="hint">Selected (${modelSelection.size}/8)</p><div class="chip-list">${[...modelSelection].map((id) => modelChip({ id })).join("")}</div>` : "";
+  if (models === null) {
+    return `${selectedChips}<p class="err-inline">Couldn't fetch the OpenRouter model list \u2014 type a model slug manually above.</p>`;
+  }
+  const query = modelSearch.trim().toLowerCase();
+  const filtered = query ? models.filter(
+    (m) => m.id.toLowerCase().includes(query) || (m.name ?? "").toLowerCase().includes(query)
+  ) : models;
+  const shown = filtered.slice(0, 60);
+  return `
+    ${selectedChips}
+    ${!query ? `<p class="hint">Quick picks</p><div class="chip-list">${quickPicks(models).map(modelChip).join("")}</div>` : ""}
+    <p class="hint">${query ? `Matches (${filtered.length})` : `All models (${models.length})`}</p>
+    <div class="chip-list">${shown.map(modelChip).join("")}</div>
+    ${filtered.length > shown.length ? `<p class="hint">\u2026and ${filtered.length - shown.length} more \u2014 refine the search.</p>` : ""}`;
+}
+function pickerHtml(models, scenarioCount) {
+  const selectedCount = modelSelection.size;
+  const runLabel = `Run benchmark: ${scenarioCount} scenario${scenarioCount === 1 ? "" : "s"} \xD7 ${selectedCount} model${selectedCount === 1 ? "" : "s"}`;
+  const disabled = selectedCount === 0 || scenarioCount === 0 || benchInFlight ? "disabled" : "";
+  const costHint = selectedCount ? `<p class="hint">Up to ${scenarioCount * selectedCount * 25} model calls (each run caps at 25 actions). Cheap models cost cents; frontier models more.</p>` : "";
+  return `
+    <h3>Pick models to test</h3>
+    <div class="picker-controls">
+      <input id="model-search" type="search" placeholder="Search models (e.g. claude, gpt, free)"
+        value="${esc(modelSearch)}" autocomplete="off">
+      <input id="manual-slug" type="text" placeholder="\u2026or add a slug manually: vendor/model" autocomplete="off">
+      <button id="btn-manual-add" type="button">Add</button>
+    </div>
+    <div id="model-list">${modelListHtml(models)}</div>
+    <div class="bench-launch">
+      <label class="filter"><span>Seed</span>
+        <input id="bench-seed" type="number" min="0" value="${benchSeed}"></label>
+      <button id="btn-bench" class="compare-btn" ${disabled}>${esc(runLabel)}</button>
+    </div>
+    ${costHint}
+    <p class="err-inline">${esc(benchError)}</p>
+    ${scenarioCount === 0 ? "<p class='empty'>No scenarios registered \u2014 add them with <code>agent-debugger scenario add \u2026</code></p>" : ""}`;
+}
+function wireChips() {
+  document.querySelectorAll(".chip.pick").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      const id = chip.dataset.model;
+      if (modelSelection.has(id))
+        modelSelection.delete(id);
+      else if (modelSelection.size < 8)
+        modelSelection.add(id);
+      void render();
+    });
+  });
+}
+function wirePicker() {
+  wireChips();
+  const search = document.getElementById("model-search");
+  search?.addEventListener("input", () => {
+    modelSearch = search.value;
+    const list = document.getElementById("model-list");
+    if (list) {
+      list.innerHTML = modelListHtml(lastModels);
+      wireChips();
+    }
+  });
+  const manual = document.getElementById("manual-slug");
+  document.getElementById("btn-manual-add")?.addEventListener("click", () => {
+    const slug = manual?.value.trim();
+    if (slug && slug.includes("/") && modelSelection.size < 8) {
+      modelSelection.add(slug);
+      if (manual)
+        manual.value = "";
+      void render();
+    }
+  });
+  const seed = document.getElementById("bench-seed");
+  seed?.addEventListener("change", () => {
+    benchSeed = Math.max(0, Number(seed.value) || 0);
+  });
+  document.getElementById("btn-bench")?.addEventListener("click", () => {
+    void launchBenchmark();
+  });
+}
+async function launchBenchmark() {
+  if (benchInFlight || modelSelection.size === 0)
+    return;
+  benchInFlight = true;
+  benchError = "";
+  const button = document.getElementById("btn-bench");
+  if (button)
+    button.disabled = true;
+  try {
+    const response = await fetch("/api/v1/benchmark", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ models: [...modelSelection], seed: benchSeed })
+    });
+    if (!response.ok) {
+      const detail = await response.json().catch(() => null);
+      benchError = detail?.detail?.user_message ?? (typeof detail?.detail === "string" ? detail.detail : `Launch failed (HTTP ${response.status})`);
+      return;
+    }
+    const body = await response.json();
+    sessionStorage.setItem("bench-batch", body.batch_id);
+  } catch (err) {
+    benchError = String(err);
+  } finally {
+    benchInFlight = false;
+    void render();
+  }
+}
+function batchStatusHtml(batch) {
+  const finished = batch.runs.filter(
+    (r) => ["completed", "failed", "canceled"].includes(r.status)
+  ).length;
+  const chips = batch.runs.map((run) => {
+    const label = `${run.model} \xB7 ${run.scenario_id.split(".").pop()}`;
+    if (run.status === "pending")
+      return `<span class="chip" title="waiting for a free run slot">${esc(label)} \xB7 queued</span>`;
+    if (run.status === "running" || run.status === "queued")
+      return `<span class="chip busy-chip">${esc(label)} \xB7 running\u2026</span>`;
+    const score = run.score !== null ? ` \xB7 ${run.score}` : "";
+    const cls = run.terminal_reason === "success" ? "ok-chip" : "bad-chip";
+    return `<a class="chip ${cls}" href="#/run/${esc(run.run_id)}" target="_blank" rel="noopener">${esc(label)}${score}</a>`;
+  }).join("");
+  return `
+    <h3>Latest benchmark <small>${finished}/${batch.runs.length} finished \xB7 seed ${batch.seed}</small></h3>
+    <div class="bench-status">${chips}</div>
+    ${finished < batch.runs.length ? `<p class="hint">Runs share a concurrency limit \u2014 queued runs start as slots free up. This page refreshes every 5 seconds.</p>` : ""}`;
+}
+async function renderModels(view) {
+  const batchId = sessionStorage.getItem("bench-batch");
+  const [status, scenarios, runs] = await Promise.all([
+    fetchJson("/api/v1/providers/openrouter/status"),
+    fetchJson("/api/v1/scenarios"),
+    fetchJson("/api/v1/runs?limit=200")
+  ]);
+  let models = null;
+  if (status.configured) {
+    try {
+      models = (await fetchJson("/api/v1/providers/openrouter/models")).models;
+    } catch {
+      models = null;
+    }
+  }
+  lastModels = models;
+  let batch = null;
+  if (batchId) {
+    try {
+      batch = await fetchJson(`/api/v1/benchmark/${batchId}`);
+    } catch {
+      sessionStorage.removeItem("bench-batch");
+    }
+  }
+  if (parseHash().view !== "models")
+    return;
+  const aggs = aggregateAgents(runs);
+  const matrix = buildMatrix(runs, scenarios);
+  const cols = aggs.map((a) => a.key).filter((k) => matrix.cols.includes(k));
+  const aggByKey = new Map(aggs.map((a) => [a.key, a]));
+  const footer = cols.length ? `<tfoot>
+        <tr><th scope="row">Avg score</th>${cols.map((c) => `<td>${aggByKey.get(c)?.avgScore ?? "\u2013"}</td>`).join("")}</tr>
+        <tr><th scope="row">Scenarios solved</th>${cols.map((c) => `<td>${aggByKey.get(c)?.solvedScenarios}/${aggByKey.get(c)?.attemptedScenarios}</td>`).join("")}</tr>
+        <tr><th scope="row">Avg actions</th>${cols.map((c) => `<td>${aggByKey.get(c)?.avgActions ?? "\u2013"}</td>`).join("")}</tr>
+        <tr><th scope="row">Runs</th>${cols.map((c) => `<td>${aggByKey.get(c)?.runCount}</td>`).join("")}</tr>
+      </tfoot>` : "";
+  const comparison = cols.length ? matrixHtml(matrix, cols, "Model comparison").replace("</table>", `${footer}</table>`) : "<p class='empty'>No runs yet \u2014 pick models above and hit Run, and this table fills in live.</p>";
+  view.innerHTML = `
+    <section class="models-page" aria-label="Models">
+      <h2>Test models</h2>
+      <p class="hint">Add your OpenRouter key, click the models you want to test, and run the whole
+        benchmark from here. Every model gets the same scenarios, seeds, and grading rubric.</p>
+      ${keyPanelHtml(status)}
+      ${status.configured ? pickerHtml(models, scenarios.length) : ""}
+      ${batch ? batchStatusHtml(batch) : ""}
+      <h3>Model comparison <small>columns ordered by average score \xB7 best in row outlined green, worst red</small></h3>
+      ${comparison}
+    </section>`;
+  wireKeyPanel();
+  if (status.configured)
+    wirePicker();
+}
 function scorecardHtml(scorecard) {
   if (!scorecard)
     return "<p>No scorecard (run not scored \u2014 infrastructure failures are never scored as agent failures).</p>";
@@ -693,7 +1069,7 @@ window.addEventListener("hashchange", () => {
   void render();
 });
 setInterval(() => {
-  if (currentRoute.view !== "overview" && currentRoute.view !== "runs")
+  if (currentRoute.view !== "overview" && currentRoute.view !== "runs" && currentRoute.view !== "models")
     return;
   const active = document.activeElement;
   if (active && (active.tagName === "SELECT" || active.tagName === "INPUT"))

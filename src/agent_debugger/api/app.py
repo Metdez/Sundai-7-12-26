@@ -18,8 +18,10 @@ from pydantic import BaseModel, Field
 
 from agent_debugger import __version__
 from agent_debugger.application import services
+from agent_debugger.application.openrouter import OpenRouterGateway
 from agent_debugger.domain.errors import AgentDebuggerError
 from agent_debugger.orchestration.replay import replay_run
+from agent_debugger.persistence.events import utc_now
 from agent_debugger.persistence.workspace import Workspace
 from agent_debugger.reports.compare import compare_run_sets, evaluate_regression
 from agent_debugger.reports.exporters import run_report_html, run_report_markdown
@@ -38,9 +40,63 @@ class RunSubmission(BaseModel):
     labels: dict[str, str] = Field(default_factory=dict)
 
 
+class KeySubmission(BaseModel):
+    # Plain str on purpose: Field(pattern=...) would echo the submitted key
+    # back in FastAPI's 422 body. Format is checked in the gateway.
+    key: str
+
+
+class BenchmarkSubmission(BaseModel):
+    models: list[str] = Field(min_length=1, max_length=8)
+    seed: int = 0
+    scenarios: list[str] | None = None
+
+
 def create_app(workspace: Workspace) -> FastAPI:
     app = FastAPI(title="Agent Debugger API", version=__version__)
     active_runs: dict[str, Any] = {}
+    gateway = OpenRouterGateway()
+    app.state.openrouter_gateway = gateway  # test hook
+    exec_cfg = (workspace.config().get("execution") or {})
+    run_semaphore = asyncio.Semaphore(int(exec_cfg.get("max_concurrent_runs", 4)))
+    # batch_id -> {"created_at": ..., "runs": [{run_id, scenario_id, model}]}
+    benchmarks: dict[str, dict[str, Any]] = {}
+
+    def _spawn_run(
+        package: Any,
+        revision: Any,
+        *,
+        seed: int,
+        renderer: str | None = None,
+        trajectory: str | None = None,
+        labels: dict[str, str] | None = None,
+        suite_id: str | None = None,
+    ) -> str:
+        """Create a background run task, gated by the concurrency semaphore."""
+        run_id = f"run-{uuid.uuid4().hex[:12]}"
+
+        async def _execute() -> None:
+            try:
+                async with run_semaphore:
+                    await services.execute_run(
+                        workspace,
+                        package,
+                        revision,
+                        seed=seed,
+                        renderer_override=renderer,
+                        trajectory=trajectory,
+                        labels=labels or {},
+                        suite_id=suite_id,
+                        run_id=run_id,
+                    )
+            except Exception:  # noqa: BLE001 - recorded via run status/events
+                pass
+            finally:
+                active_runs.pop(run_id, None)
+
+        task = asyncio.create_task(_execute())
+        active_runs[run_id] = task
+        return run_id
 
     def _err(exc: AgentDebuggerError) -> HTTPException:
         status = {"configuration": 400, "scenario_defect": 400, "authorization": 403}.get(
@@ -146,28 +202,102 @@ def create_app(workspace: Workspace) -> FastAPI:
             revision = services.get_agent(workspace, submission.agent)
         except AgentDebuggerError as exc:
             raise _err(exc) from exc
-        run_id = f"run-{uuid.uuid4().hex[:12]}"
-
-        async def _execute() -> None:
-            try:
-                await services.execute_run(
-                    workspace,
-                    package,
-                    revision,
-                    seed=submission.seed,
-                    renderer_override=submission.renderer,
-                    trajectory=submission.trajectory,
-                    labels=submission.labels,
-                    run_id=run_id,
-                )
-            except Exception:  # noqa: BLE001 - recorded via run status/events
-                pass
-            finally:
-                active_runs.pop(run_id, None)
-
-        task = asyncio.create_task(_execute())
-        active_runs[run_id] = task
+        run_id = _spawn_run(
+            package,
+            revision,
+            seed=submission.seed,
+            renderer=submission.renderer,
+            trajectory=submission.trajectory,
+            labels=submission.labels,
+        )
         return {"run_id": run_id, "status": "queued"}
+
+    # -- providers + benchmark ---------------------------------------------
+    @app.get("/api/v1/providers/openrouter/status")
+    def openrouter_status():
+        return app.state.openrouter_gateway.status()
+
+    @app.post("/api/v1/providers/openrouter/key")
+    async def openrouter_set_key(submission: KeySubmission):
+        try:
+            return await app.state.openrouter_gateway.set_key(submission.key)
+        except AgentDebuggerError as exc:
+            raise _err(exc) from exc
+
+    @app.delete("/api/v1/providers/openrouter/key")
+    def openrouter_clear_key():
+        return app.state.openrouter_gateway.clear_key()
+
+    @app.get("/api/v1/providers/openrouter/models")
+    async def openrouter_models(refresh: bool = False):
+        try:
+            return await app.state.openrouter_gateway.list_models(refresh=refresh)
+        except AgentDebuggerError as exc:
+            raise HTTPException(status_code=502, detail=exc.user_message) from exc
+
+    @app.post("/api/v1/benchmark", status_code=202)
+    async def submit_benchmark(submission: BenchmarkSubmission):
+        if not app.state.openrouter_gateway.status()["configured"]:
+            raise HTTPException(400, "No OpenRouter key configured — add one first")
+        scenario_ids = submission.scenarios or [
+            row["scenario_id"] for row in workspace.db().list_scenarios()
+        ]
+        if not scenario_ids:
+            raise HTTPException(400, "No scenarios registered in this workspace")
+        try:
+            packages = {
+                sid: services.resolve_package(workspace, sid) for sid in scenario_ids
+            }
+            revisions = services.register_benchmark_agents(workspace, submission.models)
+        except AgentDebuggerError as exc:
+            raise _err(exc) from exc
+        batch_id = f"bench-{uuid.uuid4().hex[:10]}"
+        submitted: list[dict[str, str]] = []
+        for slug in submission.models:
+            for sid in scenario_ids:
+                run_id = _spawn_run(
+                    packages[sid],
+                    revisions[slug],
+                    seed=submission.seed,
+                    labels={"batch": batch_id},
+                    suite_id=batch_id,
+                )
+                submitted.append(
+                    {"run_id": run_id, "scenario_id": sid, "model": slug}
+                )
+        benchmarks[batch_id] = {
+            "created_at": utc_now(),
+            "seed": submission.seed,
+            "runs": submitted,
+        }
+        return {"batch_id": batch_id, "submitted": submitted}
+
+    @app.get("/api/v1/benchmark/{batch_id}")
+    def benchmark_status(batch_id: str):
+        batch = benchmarks.get(batch_id)
+        if batch is None:
+            raise HTTPException(404, "unknown benchmark batch (server restarted?)")
+        runs = []
+        for entry in batch["runs"]:
+            row = workspace.db().get_run(entry["run_id"])
+            if row is None:
+                runs.append({**entry, "status": "pending", "terminal_reason": None, "score": None})
+            else:
+                scorecard = row.get("scorecard") or {}
+                runs.append(
+                    {
+                        **entry,
+                        "status": row["status"],
+                        "terminal_reason": row["terminal_reason"],
+                        "score": scorecard.get("overall_score"),
+                    }
+                )
+        return {
+            "batch_id": batch_id,
+            "created_at": batch["created_at"],
+            "seed": batch["seed"],
+            "runs": runs,
+        }
 
     @app.post("/api/v1/runs/{run_id}/cancel")
     def cancel_run(run_id: str):

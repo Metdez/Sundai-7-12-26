@@ -137,6 +137,46 @@ def enrich_scenario_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 # -- agents ----------------------------------------------------------------
+#: Agent template for UI-launched OpenRouter benchmarks. Mirrors
+#: configs/agents/openrouter-claude.yaml (provenance); kept as constants so
+#: the server never depends on repo-relative YAML paths at runtime.
+OPENROUTER_ENDPOINT = "https://openrouter.ai/api/v1"
+OPENROUTER_SYSTEM_PROMPT = (
+    "You are a careful debugging agent working inside a simulated repository. "
+    "You can only act through the tools provided. Investigate before editing: "
+    "read relevant files and run the test suite to see the failure before you "
+    "change anything. State your hypothesis, make the smallest edit that fixes "
+    "it, then re-run tests to confirm before submitting. Call agent.submit "
+    "when you are confident the fix is verified, or agent.give_up if you are "
+    "truly stuck."
+)
+
+
+def openrouter_agent_config(model_slug: str) -> dict[str, Any]:
+    """Benchmark agent config for an OpenRouter model slug (no secrets)."""
+    return {
+        "name": model_slug.replace("/", "-"),
+        "adapter_id": "openai-compat",
+        "model_identifier": model_slug,
+        "endpoint": OPENROUTER_ENDPOINT,
+        "api_key_ref": "env:OPENROUTER_API_KEY",
+        "behavior": {"system_prompt": OPENROUTER_SYSTEM_PROMPT},
+        "generation_settings": {"temperature": 0.2, "max_tokens": 1500},
+        "limits": {"max_actions": 25},
+        "tags": ["live", "openrouter", "ui"],
+    }
+
+
+def register_benchmark_agents(
+    workspace: Workspace, model_slugs: list[str]
+) -> dict[str, AgentRevision]:
+    """Register (idempotently) one benchmark agent per model slug."""
+    return {
+        slug: register_agent(workspace, openrouter_agent_config(slug))
+        for slug in model_slugs
+    }
+
+
 def register_agent(workspace: Workspace, config: dict[str, Any]) -> AgentRevision:
     if "name" not in config or "adapter_id" not in config:
         raise ConfigurationError("Agent config requires at least: name, adapter_id")

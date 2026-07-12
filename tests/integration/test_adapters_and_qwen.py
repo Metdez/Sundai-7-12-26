@@ -127,6 +127,59 @@ class TestOpenAICompatAdapter:
         assert second["action_type"] == "agent.submit"
         assert len(calls_seen) == 2
 
+    async def test_tool_choice_required_falls_back_to_auto(self):
+        """Some providers reject tool_choice="required" (found live: Alibaba's
+        qwen3.7-plus via OpenRouter, 'does not support being set to required
+        ... in thinking mode'). The adapter must retry with "auto" — sticky
+        for the rest of the run — instead of failing the run."""
+        choices_sent = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            body = json.loads(request.content)
+            choices_sent.append(body["tool_choice"])
+            if body["tool_choice"] == "required":
+                return httpx.Response(400, json={"error": {"message": (
+                    "The tool_choice parameter does not support being set to "
+                    "required or object in thinking mode")}})
+            return httpx.Response(200, json={
+                "choices": [{"message": {
+                    "role": "assistant", "content": None,
+                    "tool_calls": [{"id": "c1", "type": "function", "function": {
+                        "name": "fs__list", "arguments": "{}"}}],
+                }}],
+                "usage": {"total_tokens": 5},
+            })
+
+        from agent_debugger.protocol.actions import Observation
+        from agent_debugger.sdk.conformance import CONFORMANCE_CONTEXT
+
+        adapter = OpenAICompatAdapter(
+            endpoint="http://mock/v1", model="m", system_prompt="s", client=openai_mock(handler)
+        )
+        await adapter.start(CONFORMANCE_CONTEXT)
+        raw = await adapter.next_action(None)
+        assert raw["action_type"] == "fs.list"
+        assert choices_sent == ["required", "auto"]
+        obs = Observation(turn=1, action_type="fs.list", status="ok", body="src tests")
+        await adapter.next_action(obs)
+        assert choices_sent[-1] == "auto"  # fallback is sticky, no re-probe
+
+    async def test_other_400_surfaces_response_excerpt(self):
+        from agent_debugger.domain.errors import DependencyError
+        from agent_debugger.sdk.conformance import CONFORMANCE_CONTEXT
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(400, json={"error": {"message": "model not found"}})
+
+        adapter = OpenAICompatAdapter(
+            endpoint="http://mock/v1", model="nope/nope", system_prompt="s",
+            client=openai_mock(handler),
+        )
+        await adapter.start(CONFORMANCE_CONTEXT)
+        with pytest.raises(DependencyError) as excinfo:
+            await adapter.next_action(None)
+        assert "model not found" in excinfo.value.details["response_excerpt"]
+
     async def test_plain_text_becomes_submission(self):
         def handler(request):
             return httpx.Response(200, json={

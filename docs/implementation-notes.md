@@ -87,6 +87,31 @@ this file records how the implementation resolved its open edges.
   never a 500). The CI scenario-validation loop skips directories without a
   `manifest.yaml` so `_guides/` doesn't break `scenario test`.
 
+- **Models hub: the OpenRouter key is a session secret, never persisted.**
+  `POST /api/v1/providers/openrouter/key` verifies the key against OpenRouter
+  and stores it ONLY in the server process's `os.environ` — adapters resolve
+  `env:OPENROUTER_API_KEY` live per request, so it takes effect instantly and
+  vanishes on restart. Responses carry a masked tail only; the security suite
+  scans workspace files and API responses for the literal. Single-process
+  assumption (serve runs one uvicorn worker). The API remains a no-auth local
+  operator tool bound to 127.0.0.1 — do not expose it.
+- **`execution.max_concurrent_runs` is now actually enforced** on the API
+  path: all run spawning (POST /runs and POST /benchmark) goes through one
+  semaphore-gated `_spawn_run` helper in `create_app`. Benchmark batches keep
+  an in-memory registry so semaphore-queued runs (no DB row yet) surface as
+  `"pending"` via `GET /api/v1/benchmark/{batch_id}`; the registry does not
+  survive restarts (clients get 404 and fall back to `/runs?suite_id=`).
+- **UI benchmark agents are generated configs.** One agent per model slug
+  (`services.openrouter_agent_config`), same debugging prompt/limits as
+  `configs/agents/openrouter-*.yaml`; registration is idempotent because
+  `save_agent` is INSERT OR IGNORE on the config-hash revision_id.
+- **Providers may reject `tool_choice: "required"`** — found by dogfooding
+  the UI benchmark: Alibaba's qwen3.7-plus 400s with "does not support being
+  set to required or object in thinking mode", which showed up as 5
+  infrastructure-failed runs. The openai-compat adapter now retries once with
+  `tool_choice: "auto"` (sticky per run) and surfaces a response-body excerpt
+  in DependencyError details for all other HTTP failures.
+
 ## Backlog (content and features, not requirements changes)
 
 - 5 more scenario tasks to reach the Phase 2 target of ten (current: five

@@ -105,6 +105,59 @@ class TestSecretLeakage:
                 "name": "leaky", "adapter_id": "scripted", "api_key": "sk-plaintext",
             })
 
+    async def test_ui_provided_openrouter_key_never_persisted(
+        self, workspace, repo_root, monkeypatch
+    ):
+        """A key installed via the dashboard endpoint must never reach any
+        workspace file, config row, or API response (only its masked tail)."""
+        import httpx as _httpx
+
+        from agent_debugger.api.app import create_app
+        from agent_debugger.application import services as _services
+        from agent_debugger.application.openrouter import KEY_ENV
+        from agent_debugger.scenario.package import load_package
+
+        key = "sk-or-v1-" + "s" * 24
+        package = load_package(repo_root / "scenarios" / "login-env-var")
+        _services.register_scenario(workspace, package)
+        monkeypatch.delenv(KEY_ENV, raising=False)
+        monkeypatch.setattr(
+            _services, "build_adapter",
+            lambda revision, trajectory=None: ScriptedAgent(
+                package.load_trajectory("known_good")
+            ),
+        )
+        app = create_app(workspace)
+
+        async def accept(candidate: str) -> bool:
+            return True
+
+        monkeypatch.setattr(app.state.openrouter_gateway, "verify_key", accept)
+        transport = _httpx.ASGITransport(app=app)
+        async with _httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            set_response = await client.post(
+                "/api/v1/providers/openrouter/key", json={"key": key}
+            )
+            assert set_response.status_code == 200 and key not in set_response.text
+            bench = await client.post("/api/v1/benchmark", json={"models": ["x/y"]})
+            assert bench.status_code == 202
+            batch_id = bench.json()["batch_id"]
+            import asyncio as _asyncio
+
+            for _ in range(200):
+                rows = (await client.get(f"/api/v1/runs?suite_id={batch_id}")).json()
+                if rows and all(r["status"] == "completed" for r in rows):
+                    break
+                await _asyncio.sleep(0.05)
+            agents_text = (await client.get("/api/v1/agents")).text
+            runs_text = (await client.get("/api/v1/runs")).text
+
+        assert key not in agents_text
+        assert key not in runs_text
+        for path in workspace.state_dir.rglob("*"):
+            if path.is_file() and path.suffix in (".json", ".jsonl", ".yaml", ".md", ".html"):
+                assert key not in path.read_text("utf-8", errors="ignore"), path
+
 
 class TestDestructiveAndPrivileged:
     async def test_destructive_never_reaches_engine(

@@ -60,6 +60,11 @@ class OpenAICompatAdapter:
         self._canceled = False
         self._tokens = 0
         self._pending_tool_call_id: str | None = None
+        # Some providers reject tool_choice="required" (observed: Alibaba/qwen
+        # via OpenRouter — "does not support being set to required ... in
+        # thinking mode"). We start strict and fall back to "auto" once,
+        # sticky for the rest of the run.
+        self._tool_choice = "required"
         # Some models (observed: GPT-5.4 via OpenRouter) return multiple
         # parallel tool_calls in one assistant turn even though the canonical
         # protocol executes one action per turn. Every tool_call in an
@@ -115,22 +120,7 @@ class OpenAICompatAdapter:
 
         client = self._client or httpx.AsyncClient(timeout=self.timeout_seconds)
         try:
-            response = await client.post(
-                f"{self.endpoint}/chat/completions",
-                headers=headers,
-                json={
-                    "model": self.model,
-                    "messages": self._messages,
-                    "tools": self._tools,
-                    "tool_choice": "required",
-                    "temperature": self.temperature,
-                    "max_tokens": self.max_tokens,
-                },
-            )
-            response.raise_for_status()
-            data = response.json()
-        except httpx.HTTPError as exc:
-            raise DependencyError(f"Agent model endpoint failed: {exc}") from exc
+            data = await self._chat_completion(client, headers)
         finally:
             if self._client is None:
                 await client.aclose()
@@ -158,6 +148,41 @@ class OpenAICompatAdapter:
             "params": params,
             "thought": message.get("content"),
         }
+
+    async def _chat_completion(
+        self, client: httpx.AsyncClient, headers: dict[str, str]
+    ) -> dict[str, Any]:
+        while True:
+            try:
+                response = await client.post(
+                    f"{self.endpoint}/chat/completions",
+                    headers=headers,
+                    json={
+                        "model": self.model,
+                        "messages": self._messages,
+                        "tools": self._tools,
+                        "tool_choice": self._tool_choice,
+                        "temperature": self.temperature,
+                        "max_tokens": self.max_tokens,
+                    },
+                )
+                response.raise_for_status()
+                return response.json()
+            except httpx.HTTPStatusError as exc:
+                excerpt = exc.response.text[:300]
+                if (
+                    exc.response.status_code == 400
+                    and self._tool_choice == "required"
+                    and "tool_choice" in excerpt
+                ):
+                    self._tool_choice = "auto"
+                    continue
+                raise DependencyError(
+                    f"Agent model endpoint failed: {exc}",
+                    details={"response_excerpt": excerpt},
+                ) from exc
+            except httpx.HTTPError as exc:
+                raise DependencyError(f"Agent model endpoint failed: {exc}") from exc
 
     async def cancel(self) -> None:
         self._canceled = True
